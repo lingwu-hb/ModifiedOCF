@@ -87,8 +87,8 @@ static void add_request_to_history(struct ocf_request* req) {
     }
 }
 
-static env_atomic_t total_requests = 0;
-static env_atomic_t cache_write_requests = 0;
+static env_atomic total_requests;
+static env_atomic cache_write_requests;
 
 static void _ocf_read_generic_hit_complete(struct ocf_request* req, int error) {
     struct ocf_alock* c = ocf_cache_line_concurrency(
@@ -281,6 +281,7 @@ static const struct ocf_engine_callbacks _rd_engine_callbacks =
 int ocf_read_generic(struct ocf_request* req) {
     int lock = OCF_LOCK_NOT_ACQUIRED;
     struct ocf_cache* cache = req->cache;
+    env_atomic_inc(&total_requests);
 
     ocf_io_start(&req->ioi.io);
 
@@ -298,51 +299,54 @@ int ocf_read_generic(struct ocf_request* req) {
     req->io_if = &_io_if_read_generic_resume;
     req->engine_cbs = &_rd_engine_callbacks;
 
-    lock = ocf_engine_prepare_clines(req);
-
+    // 在获取锁之前先判断是否在历史IO中
     bool is_in_history = find_request_in_history(req->ioi.io.addr, ocf_core_get_id(req->core));
     if (!is_in_history) {  // 如果历史 IO 中没有找到，则将请求添加到历史 IO 中，直接 pass-thru
         add_request_to_history(req);
         ocf_req_clear(req);
         req->force_pt = true;
         ocf_get_io_if(ocf_cache_mode_pt)->read(req);
-    } else {  // 如果历史 IO 中找到了，则按照正常的流程执行 IO 操作
-        if (!ocf_req_test_mapping_error(req)) {
-            if (lock >= 0) {
-                if (lock != OCF_LOCK_ACQUIRED) {
-                    /* Lock was not acquired, need to wait for resume */
-                    OCF_DEBUG_RQ(req, "NO LOCK");
-                } else {
-                    // 尝试往缓存中写入的 IO 操作
-                    /* 增加缓存写入计数并打印信息 */
-                    env_atomic_inc(&cache_write_requests);
-                    printf("[Cache Write] Address: %llu, Core: %u, Total: %d, Cache: %d, Ratio: %d%%",
-                           req->ioi.io.addr,
-                           ocf_core_get_id(req->core),
-                           env_atomic_read(&total_requests),
-                           env_atomic_read(&cache_write_requests),
-                           env_atomic_read(&cache_write_requests) * 100 / env_atomic_read(&total_requests));
+        ocf_req_put(req);
+        return 0;
+    }
 
-                    /* Lock was acquired can perform IO */
-                    _ocf_read_generic_do(req);
-                }
+    lock = ocf_engine_prepare_clines(req);
+
+    if (!ocf_req_test_mapping_error(req)) {
+        if (lock >= 0) {
+            if (lock != OCF_LOCK_ACQUIRED) {
+                /* Lock was not acquired, need to wait for resume */
+                OCF_DEBUG_RQ(req, "NO LOCK");
             } else {
-                OCF_DEBUG_RQ(req, "LOCK ERROR %d", lock);
-                req->complete(req, lock);
-                ocf_req_put(req);
+                // 尝试往缓存中写入的 IO 操作
+                /* 增加缓存写入计数并打印信息 */
+                env_atomic_inc(&cache_write_requests);
+                printf("[Cache Write] Address: %llu, Core: %u, Total: %d, Cache: %d, Ratio: %d%%",
+                       req->ioi.io.addr,
+                       ocf_core_get_id(req->core),
+                       env_atomic_read(&total_requests),
+                       env_atomic_read(&cache_write_requests),
+                       env_atomic_read(&cache_write_requests) * 100 / env_atomic_read(&total_requests));
+
+                /* Lock was acquired can perform IO */
+                _ocf_read_generic_do(req);
             }
         } else {
-            ocf_req_clear(req);
-            req->force_pt = true;
-            ocf_get_io_if(ocf_cache_mode_pt)->read(req);
+            OCF_DEBUG_RQ(req, "LOCK ERROR %d", lock);
+            req->complete(req, lock);
+            ocf_req_put(req);
         }
+    } else {
+        ocf_req_clear(req);
+        req->force_pt = true;
+        ocf_get_io_if(ocf_cache_mode_pt)->read(req);
     }
 
     /* 打印当前统计信息 */
-    printf("[Stats] Total Requests: %d, Cache Writes: %d, Cache Write Ratio: %d%%",
-           env_atomic_read(&total_requests),
-           env_atomic_read(&cache_write_requests),
-           env_atomic_read(&cache_write_requests) * 100 / env_atomic_read(&total_requests));
+    // printf("[Stats] Total Requests: %d, Cache Writes: %d, Cache Write Ratio: %d%%",
+    //        env_atomic_read(&total_requests),
+    //        env_atomic_read(&cache_write_requests),
+    //        env_atomic_read(&cache_write_requests) * 100 / env_atomic_read(&total_requests));
 
     /* Put OCF request - decrease reference counter */
     ocf_req_put(req);
