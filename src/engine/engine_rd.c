@@ -316,12 +316,12 @@ int ocf_read_generic(struct ocf_request* req) {
                     // 尝试往缓存中写入的 IO 操作
                     /* 增加缓存写入计数并打印信息 */
                     env_atomic_inc(&cache_write_requests);
-                    OCF_DEBUG_RQ(req, "[Cache Write] Address: %llu, Core: %u, Total: %d, Cache: %d, Ratio: %d%%",
-                                 req->ioi.io.addr,
-                                 ocf_core_get_id(req->core),
-                                 env_atomic_read(&total_requests),
-                                 env_atomic_read(&cache_write_requests),
-                                 env_atomic_read(&cache_write_requests) * 100 / env_atomic_read(&total_requests));
+                    printf("[Cache Write] Address: %llu, Core: %u, Total: %d, Cache: %d, Ratio: %d%%",
+                           req->ioi.io.addr,
+                           ocf_core_get_id(req->core),
+                           env_atomic_read(&total_requests),
+                           env_atomic_read(&cache_write_requests),
+                           env_atomic_read(&cache_write_requests) * 100 / env_atomic_read(&total_requests));
 
                     /* Lock was acquired can perform IO */
                     _ocf_read_generic_do(req);
@@ -339,10 +339,10 @@ int ocf_read_generic(struct ocf_request* req) {
     }
 
     /* 打印当前统计信息 */
-    OCF_DEBUG_RQ(req, "[Stats] Total Requests: %d, Cache Writes: %d, Cache Write Ratio: %d%%",
-                 env_atomic_read(&total_requests),
-                 env_atomic_read(&cache_write_requests),
-                 env_atomic_read(&cache_write_requests) * 100 / env_atomic_read(&total_requests));
+    printf("[Stats] Total Requests: %d, Cache Writes: %d, Cache Write Ratio: %d%%",
+           env_atomic_read(&total_requests),
+           env_atomic_read(&cache_write_requests),
+           env_atomic_read(&cache_write_requests) * 100 / env_atomic_read(&total_requests));
 
     /* Put OCF request - decrease reference counter */
     ocf_req_put(req);
