@@ -44,20 +44,19 @@ static unsigned int calc_hash(uint64_t addr, int core_id) {
 }
 
 /* 在哈希表中查找请求 */
-static struct ocf_request* find_request_in_history(uint64_t addr, int core_id) {
+static bool find_request_in_history(uint64_t addr, int core_id) {
     unsigned int hash = calc_hash(addr, core_id);
     struct history_node* node = history_hash[hash];
 
     while (node) {
         if (node->req && node->req->ioi.io.addr == addr &&
             ocf_core_get_id(node->req->core) == core_id) {
-            return node->req;
+            return true;  // 找到匹配的请求
         }
         node = node->next;
     }
 
-    // 返回值需要修改，直接返回一个整数，表示是否在历史 IO 中能找到
-    return 0;
+    return false;  // 未找到匹配的请求
 }
 
 /* 添加请求到哈希表 */
@@ -301,8 +300,8 @@ int ocf_read_generic(struct ocf_request* req) {
 
     lock = ocf_engine_prepare_clines(req);
 
-    struct ocf_request* hist_req = find_request_in_history(req->ioi.io.addr, ocf_core_get_id(req->core));
-    if (!hist_req) {  // 如果历史 IO 中没有找到，则将请求添加到历史 IO 中，直接 pass-thru
+    bool is_in_history = find_request_in_history(req->ioi.io.addr, ocf_core_get_id(req->core));
+    if (!is_in_history) {  // 如果历史 IO 中没有找到，则将请求添加到历史 IO 中，直接 pass-thru
         add_request_to_history(req);
         ocf_req_clear(req);
         req->force_pt = true;
