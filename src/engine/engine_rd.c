@@ -4,12 +4,14 @@
  */
 
 #include "engine_rd.h"
+#include <signal.h>
 #include "../concurrency/ocf_concurrency.h"
 #include "../metadata/metadata.h"
 #include "../ocf_cache_priv.h"
 #include "../ocf_def_priv.h"
 #include "../ocf_request.h"
 #include "../utils/utils_cache_line.h"
+#include "../utils/utils_history_hash.h"
 #include "../utils/utils_io.h"
 #include "../utils/utils_user_part.h"
 #include "cache_engine.h"
@@ -21,71 +23,6 @@
 
 #define OCF_ENGINE_DEBUG_IO_NAME "rd"
 #include "engine_debug.h"
-
-/* 定义哈希表大小 */
-#define HISTORY_HASH_SIZE 1024
-#define TIME_THRESHOLD 2  // 设定请求次数阈值
-#define MAX_HISTORY 100   // 最大历史请求数
-
-/* 哈希表节点结构 */
-struct history_node {
-    struct ocf_request* req;
-    struct history_node* next;
-};
-typedef struct history_node history_node_t;
-
-/* 哈希表 */
-static history_node_t* history_hash[HISTORY_HASH_SIZE];
-static int history_count = 0;
-
-/* 计算哈希值 */
-static unsigned int calc_hash(uint64_t addr, int core_id) {
-    return (unsigned int)((addr ^ core_id) % HISTORY_HASH_SIZE);
-}
-
-/* 在哈希表中查找请求 */
-static bool find_request_in_history(uint64_t addr, int core_id) {
-    unsigned int hash = calc_hash(addr, core_id);
-    struct history_node* node = history_hash[hash];
-
-    while (node) {
-        if (node->req && node->req->ioi.io.addr == addr &&
-            ocf_core_get_id(node->req->core) == core_id) {
-            return true;  // 找到匹配的请求
-        }
-        node = node->next;
-    }
-
-    return false;  // 未找到匹配的请求
-}
-
-/* 添加请求到哈希表 */
-static void add_request_to_history(struct ocf_request* req) {
-    unsigned int hash = calc_hash(req->ioi.io.addr, ocf_core_get_id(req->core));
-    history_node_t* new_node = env_malloc(sizeof(history_node_t), ENV_MEM_NORMAL);
-
-    if (!new_node)
-        return;
-
-    new_node->req = req;
-    new_node->next = history_hash[hash];
-    history_hash[hash] = new_node;
-    history_count++;
-
-    /* 如果超过最大历史数量，清理最旧的记录 */
-    if (history_count > MAX_HISTORY) {
-        /* 找到并移除最旧的记录 */
-        for (int i = 0; i < HISTORY_HASH_SIZE; i++) {
-            if (history_hash[i]) {
-                struct history_node* temp = history_hash[i];
-                history_hash[i] = temp->next;
-                env_free(temp);
-                history_count--;
-                break;
-            }
-        }
-    }
-}
 
 static env_atomic total_requests;
 static env_atomic cache_write_requests;
@@ -278,6 +215,24 @@ static const struct ocf_engine_callbacks _rd_engine_callbacks =
         .resume = ocf_engine_on_resume,
 };
 
+/* 添加打印统计信息的函数 */
+static void print_final_statistics(void) {
+    int total = env_atomic_read(&total_requests);
+    int cache_writes = env_atomic_read(&cache_write_requests);
+    int ratio = total > 0 ? (cache_writes * 100) / total : 0;
+
+    printf("\n=== Final Cache Statistics ===\n");
+    printf("Total Requests: %d\n", total);
+    printf("Cache Writes: %d\n", cache_writes);
+    printf("Cache Write Ratio: %d%%\n", ratio);
+    printf("===========================\n\n");
+}
+
+/* 注册退出处理函数 */
+static void __attribute__((constructor)) init_statistics(void) {
+    atexit(print_final_statistics);
+}
+
 int ocf_read_generic(struct ocf_request* req) {
     int lock = OCF_LOCK_NOT_ACQUIRED;
     struct ocf_cache* cache = req->cache;
@@ -300,9 +255,15 @@ int ocf_read_generic(struct ocf_request* req) {
     req->engine_cbs = &_rd_engine_callbacks;
 
     // 在获取锁之前先判断是否在历史IO中
-    bool is_in_history = find_request_in_history(req->ioi.io.addr, ocf_core_get_id(req->core));
+    bool is_in_history = ocf_history_hash_find(req->ioi.io.addr, ocf_core_get_id(req->core));
+
+    // 每1000个请求输出一次哈希表状态
+    if (env_atomic_read(&total_requests) % 1000 == 0) {
+        ocf_history_hash_print_stats();
+    }
+
     if (!is_in_history) {  // 如果历史 IO 中没有找到，则将请求添加到历史 IO 中，直接 pass-thru
-        add_request_to_history(req);
+        ocf_history_hash_add(req);
         ocf_req_clear(req);
         req->force_pt = true;
         ocf_get_io_if(ocf_cache_mode_pt)->read(req);
@@ -321,12 +282,14 @@ int ocf_read_generic(struct ocf_request* req) {
                 // 尝试往缓存中写入的 IO 操作
                 /* 增加缓存写入计数并打印信息 */
                 env_atomic_inc(&cache_write_requests);
-                printf("[Cache Write] Address: %llu, Core: %u, Total: %d, Cache: %d, Ratio: %d%%",
-                       req->ioi.io.addr,
-                       ocf_core_get_id(req->core),
-                       env_atomic_read(&total_requests),
-                       env_atomic_read(&cache_write_requests),
-                       env_atomic_read(&cache_write_requests) * 100 / env_atomic_read(&total_requests));
+                if (env_atomic_read(&cache_write_requests) % 10 == 0) {
+                    printf("[Cache Write] Address: %llu, Core: %u, Total: %d, Cache: %d, Ratio: %d%%\n",
+                           req->ioi.io.addr,
+                           ocf_core_get_id(req->core),
+                           env_atomic_read(&total_requests),
+                           env_atomic_read(&cache_write_requests),
+                           env_atomic_read(&cache_write_requests) * 100 / env_atomic_read(&total_requests));
+                }
 
                 /* Lock was acquired can perform IO */
                 _ocf_read_generic_do(req);
@@ -341,12 +304,6 @@ int ocf_read_generic(struct ocf_request* req) {
         req->force_pt = true;
         ocf_get_io_if(ocf_cache_mode_pt)->read(req);
     }
-
-    /* 打印当前统计信息 */
-    // printf("[Stats] Total Requests: %d, Cache Writes: %d, Cache Write Ratio: %d%%",
-    //        env_atomic_read(&total_requests),
-    //        env_atomic_read(&cache_write_requests),
-    //        env_atomic_read(&cache_write_requests) * 100 / env_atomic_read(&total_requests));
 
     /* Put OCF request - decrease reference counter */
     ocf_req_put(req);
