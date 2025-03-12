@@ -297,7 +297,7 @@ void ocf_core_volume_submit_io(struct ocf_io* io) {
 
     if (!ocf_core_submit_io_fast(io, req, core, cache)) {
 #if OCF_DEBUG_ENABLED
-        printf("[Debug] IO Hit Address: %llu, Size: %u\n", req->ioi.io.addr, req->ioi.io.bytes);
+        printf("[Debug] IO Hit               Address: %12lluKB, Size: %8uKB\n", req->ioi.io.addr / 1024, req->ioi.io.bytes / 1024);
 #endif
         ocf_core_seq_cutoff_update(core, req);
         ocf_req_put(req);
@@ -305,7 +305,7 @@ void ocf_core_volume_submit_io(struct ocf_io* io) {
     }
 
 #if OCF_DEBUG_ENABLED
-    printf("[Debug] IO MISS Address: %llu, Size: %u\n", req->ioi.io.addr, req->ioi.io.bytes);
+    printf("[Debug] IO MISS              Address: %12lluKB, Size: %8uKB\n", req->ioi.io.addr / 1024, req->ioi.io.bytes / 1024);
 #endif
 
     ocf_req_put(req);

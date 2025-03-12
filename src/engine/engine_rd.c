@@ -246,7 +246,7 @@ int ocf_read_generic(struct ocf_request* req) {
 
     if (!is_in_history) {  // 如果历史 IO 中没有找到，则将请求添加到历史 IO 中，直接 pass-thru
 #if OCF_DEBUG_ENABLED
-        printf("[Debug] IO PT, History miss Address: %llu, Size: %u\n", req->ioi.io.addr, req->ioi.io.bytes);
+        printf("[Debug] IO PT, Hisy miss     Address: %12lluKB, Size: %8uKB\n", req->ioi.io.addr / 1024, req->ioi.io.bytes / 1024);
 #endif
         ocf_history_hash_add(req);
         ocf_req_clear(req);
@@ -264,23 +264,23 @@ int ocf_read_generic(struct ocf_request* req) {
                 /* Lock was not acquired, need to wait for resume */
                 OCF_DEBUG_RQ(req, "NO LOCK");
 #if OCF_DEBUG_ENABLED
-                printf("[Debug] IO NO Lock, Address: %llu, Size: %u\n", req->ioi.io.addr, req->ioi.io.bytes);
+                printf("[Debug] IO NO Lock           Address: %12lluKB, Size: %8uKB\n", req->ioi.io.addr / 1024, req->ioi.io.bytes / 1024);
 #endif
             } else {
                 // 尝试往缓存中写入的 IO 操作
                 /* 增加缓存写入计数并打印信息 */
 #if OCF_DEBUG_ENABLED
-                printf("[Debug] IO Write Cache, History hit Address: %llu, Size: %u\n", req->ioi.io.addr, req->ioi.io.bytes);
+                printf("[Debug] IO Write Cache       Address: %12lluKB, Size: %8uKB\n", req->ioi.io.addr / 1024, req->ioi.io.bytes / 1024);
 #endif
                 env_atomic_inc(&cache_write_requests);
-                if (env_atomic_read(&cache_write_requests) % 10 == 0) {
-                    printf("[Cache Write] Address: %llu, Core: %u, Total: %d, Cache: %d, Ratio: %d%%\n",
-                           req->ioi.io.addr,
-                           ocf_core_get_id(req->core),
-                           env_atomic_read(&total_requests),
-                           env_atomic_read(&cache_write_requests),
-                           env_atomic_read(&cache_write_requests) * 100 / env_atomic_read(&total_requests));
-                }
+                // if (env_atomic_read(&cache_write_requests) % 10 == 0) {
+                //     printf("[Cache Write] Address: %llu, Core: %u, Total: %d, Cache: %d, Ratio: %d%%\n",
+                //            req->ioi.io.addr,
+                //            ocf_core_get_id(req->core),
+                //            env_atomic_read(&total_requests),
+                //            env_atomic_read(&cache_write_requests),
+                //            env_atomic_read(&cache_write_requests) * 100 / env_atomic_read(&total_requests));
+                // }
 
                 /* Lock was acquired can perform IO */
                 _ocf_read_generic_do(req);
@@ -289,7 +289,7 @@ int ocf_read_generic(struct ocf_request* req) {
             OCF_DEBUG_RQ(req, "LOCK ERROR %d", lock);
 
 #if OCF_DEBUG_ENABLED
-            printf("[Debug] IO Lock Error, Address: %llu, Size: %u\n", req->ioi.io.addr, req->ioi.io.bytes);
+            printf("[Debug] IO Lock Error        Address: %12lluKB, Size: %8uKB\n", req->ioi.io.addr / 1024, req->ioi.io.bytes / 1024);
 #endif
 
             req->complete(req, lock);
@@ -297,7 +297,7 @@ int ocf_read_generic(struct ocf_request* req) {
         }
     } else {
 #if OCF_DEBUG_ENABLED
-        printf("[Debug] IO PT, Map error Address: %llu, Size: %u\n", req->ioi.io.addr, req->ioi.io.bytes);
+        printf("[Debug] IO PT, Map error     Address: %12lluKB, Size: %8uKB\n", req->ioi.io.addr / 1024, req->ioi.io.bytes / 1024);
 #endif
         ocf_req_clear(req);
         req->force_pt = true;
