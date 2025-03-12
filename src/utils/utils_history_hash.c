@@ -247,23 +247,6 @@ void ocf_history_hash_print_stats(void) {
            load_factor * 100, hit_ratio, collision_count);
 }
 
-/* 打印最终统计信息和推荐参数 */
-void ocf_history_hash_print_final_stats(void) {
-    printf("\n=== Final Hash Table Statistics ===\n");
-    printf("Hash Table Size: %u\n", current_hash_size);
-    printf("Max History: %d\n", max_history);
-    printf("Current History Count: %d\n", history_count);
-    printf("Collision Count: %llu\n", collision_count);
-    printf("Longest Chain: %llu\n", longest_chain);
-    printf("===========================\n\n");
-
-    // 输出最优哈希表参数建议
-    printf("=== Recommended Parameters ===\n");
-    printf("#define HISTORY_HASH_SIZE %u\n", current_hash_size);
-    printf("#define MAX_HISTORY %d\n", max_history);
-    printf("=============================\n\n");
-}
-
 /* 清理哈希表资源 */
 void ocf_history_hash_cleanup(void) {
     // 释放哈希表内存
@@ -279,18 +262,4 @@ void ocf_history_hash_cleanup(void) {
         env_free(history_hash);
         history_hash = NULL;
     }
-}
-
-/* 信号处理函数 */
-static void signal_handler(int signum) {
-    if (signum == SIGINT || signum == SIGTERM) {
-        ocf_history_hash_print_final_stats();
-    }
-}
-
-/* 注册退出处理函数 */
-static void __attribute__((constructor)) init_history_hash_module(void) {
-    signal(SIGINT, signal_handler);
-    signal(SIGTERM, signal_handler);
-    atexit(ocf_history_hash_print_final_stats);
 }
