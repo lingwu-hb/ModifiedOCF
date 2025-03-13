@@ -43,7 +43,9 @@ void ocf_history_hash_init(void) {
 
 /* 计算哈希值 */
 static unsigned int calc_hash(uint64_t addr, int core_id) {
-    return (unsigned int)((addr ^ core_id) % current_hash_size);
+    // 将地址按4K对齐
+    uint64_t aligned_addr = addr & ~(PAGE_SIZE - 1);
+    return (unsigned int)((aligned_addr ^ core_id) % current_hash_size);
 }
 
 /* 在哈希表中查找请求 */
@@ -53,44 +55,55 @@ bool ocf_history_hash_find(uint64_t addr, int core_id) {
         return false;
     }
 
-    unsigned int hash = calc_hash(addr, core_id);
-    struct history_node* node = history_hash[hash];
-    struct history_node* prev = NULL;
-    uint32_t chain_length = 0;
+    // 将请求按4K块拆分处理
+    uint64_t start_addr = addr & ~(PAGE_SIZE - 1);
+    uint64_t end_addr = (addr + PAGE_SIZE - 1) & ~(PAGE_SIZE - 1);
+    bool found = false;
 
-    while (node) {
-        chain_length++;
-        if (node->req && node->req->ioi.io.addr == addr &&
-            ocf_core_get_id(node->req->core) == core_id) {
-            // 更新访问信息
-            node->access_count++;
-            node->timestamp = current_timestamp++;
+    // 遍历请求覆盖的所有4K块
+    for (uint64_t curr_addr = start_addr; curr_addr <= end_addr; curr_addr += PAGE_SIZE) {
+        unsigned int hash = calc_hash(curr_addr, core_id);
+        struct history_node* node = history_hash[hash];
+        struct history_node* prev = NULL;
+        uint32_t chain_length = 0;
 
-            // 将热点数据移到链表前端（如果不是第一个节点）
-            if (prev) {
-                prev->next = node->next;
-                node->next = history_hash[hash];
-                history_hash[hash] = node;
+        while (node) {
+            chain_length++;
+            // 检查4K对齐的地址是否匹配
+            if (node->req && (node->req->ioi.io.addr & ~(PAGE_SIZE - 1)) == curr_addr &&
+                ocf_core_get_id(node->req->core) == core_id) {
+                // 更新访问信息
+                node->access_count++;
+                node->timestamp = current_timestamp++;
+
+                // 将热点数据移到链表前端
+                if (prev) {
+                    prev->next = node->next;
+                    node->next = history_hash[hash];
+                    history_hash[hash] = node;
+                }
+
+                hit_count++;
+                found = true;
+                break;
             }
-
-            hit_count++;
-            return true;  // 找到匹配的请求
+            prev = node;
+            node = node->next;
         }
-        prev = node;
-        node = node->next;
+
+        // 更新统计信息
+        if (chain_length > longest_chain) {
+            longest_chain = chain_length;
+        }
+        if (chain_length > 1) {
+            collision_count++;
+        }
+        if (!found) {
+            miss_count++;
+        }
     }
 
-    // 更新最长链长度统计
-    if (chain_length > longest_chain) {
-        longest_chain = chain_length;
-    }
-
-    if (chain_length > 1) {
-        collision_count++;
-    }
-
-    miss_count++;
-    return false;  // 未找到匹配的请求
+    return found;
 }
 
 /* 重新调整哈希表大小 */
@@ -213,24 +226,30 @@ void ocf_history_hash_add(struct ocf_request* req) {
         ocf_history_hash_init();
     }
 
-    unsigned int hash = calc_hash(req->ioi.io.addr, ocf_core_get_id(req->core));
-    history_node_t* new_node = env_malloc(sizeof(history_node_t), ENV_MEM_NORMAL);
+    // 将请求按4K块拆分添加
+    uint64_t start_addr = req->ioi.io.addr & ~(PAGE_SIZE - 1);
+    uint64_t end_addr = (req->ioi.io.addr + req->ioi.io.bytes - 1) & ~(PAGE_SIZE - 1);
 
-    if (!new_node)
-        return;
+    for (uint64_t curr_addr = start_addr; curr_addr <= end_addr; curr_addr += PAGE_SIZE) {
+        unsigned int hash = calc_hash(curr_addr, ocf_core_get_id(req->core));
+        history_node_t* new_node = env_malloc(sizeof(history_node_t), ENV_MEM_NORMAL);
 
-    /* 头插法 */
-    new_node->req = req;
-    new_node->next = history_hash[hash];
-    new_node->timestamp = current_timestamp++;
-    new_node->access_count = 1;
+        if (!new_node)
+            continue;
 
-    history_hash[hash] = new_node;
-    history_count++;
+        /* 头插法 */
+        new_node->req = req;
+        new_node->next = history_hash[hash];
+        new_node->timestamp = current_timestamp++;
+        new_node->access_count = 1;
 
-    /* 如果超过最大历史数量，清理最不常用的记录 */
-    if (history_count > max_history) {
-        cleanup_lru_history();
+        history_hash[hash] = new_node;
+        history_count++;
+
+        /* 如果超过最大历史数量，清理最不常用的记录 */
+        if (history_count > max_history) {
+            cleanup_lru_history();
+        }
     }
 
     /* 检查是否需要调整哈希表大小 */

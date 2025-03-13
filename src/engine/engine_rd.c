@@ -24,6 +24,8 @@
 #define OCF_ENGINE_DEBUG_IO_NAME "rd"
 #include "engine_debug.h"
 
+#define HISTORY_HIT_RATIO_THRESHOLD 0.7  // 70%的4K块命中才算请求命中
+
 static env_atomic total_requests;
 static env_atomic cache_write_requests;
 
@@ -236,18 +238,38 @@ int ocf_read_generic(struct ocf_request* req) {
     req->io_if = &_io_if_read_generic_resume;
     req->engine_cbs = &_rd_engine_callbacks;
 
-    // 在获取锁之前先判断是否在历史IO中
-    bool is_in_history = ocf_history_hash_find(req->ioi.io.addr, ocf_core_get_id(req->core));
+    // 计算请求覆盖的4K块数
+    uint64_t start_addr = req->ioi.io.addr & ~(PAGE_SIZE - 1);
+    uint64_t end_addr = (req->ioi.io.addr + req->ioi.io.bytes - 1) & ~(PAGE_SIZE - 1);
+    uint64_t total_pages = ((end_addr - start_addr) / PAGE_SIZE) + 1;
+    uint64_t hit_pages = 0;
+
+    // 遍历每个4K块检查是否在历史记录中
+    for (uint64_t curr_addr = start_addr; curr_addr <= end_addr; curr_addr += PAGE_SIZE) {
+        if (ocf_history_hash_find(curr_addr, ocf_core_get_id(req->core))) {
+            hit_pages++;
+        }
+    }
+
+    // 计算命中率并判断
+    float hit_ratio = (float)hit_pages / total_pages;
+    bool is_in_history = (hit_ratio >= HISTORY_HIT_RATIO_THRESHOLD);
 
     // 每1000个请求输出一次哈希表状态
     if (env_atomic_read(&total_requests) % 1000 == 0) {
         ocf_history_hash_print_stats();
+#if OCF_DEBUG_ENABLED
+        printf("[Debug] Request hit ratio: %.2f%% (%llu/%llu 4K blocks)\n",
+               hit_ratio * 100, hit_pages, total_pages);
+#endif
     }
 
-    if (!is_in_history) {  // 如果历史 IO 中没有找到，则将请求添加到历史 IO 中，直接 pass-thru
+    if (!is_in_history) {  // 如果历史 IO 中命中率不够，则将请求添加到历史 IO 中，直接 pass-thru
 #if OCF_DEBUG_ENABLED
-        printf("[Debug] IO PT, Hisy miss     Address: %12lluKB, Size: %8uKB\n", req->ioi.io.addr / 1024, req->ioi.io.bytes / 1024);
+        printf("[Debug] IO PT, History miss   Address: %14llu, Size: %8uKB, Hit ratio: %.2f%%\n",
+               req->ioi.io.addr, req->ioi.io.bytes / 1024, hit_ratio * 100);
 #endif
+        // 将所有未命中的4K块添加到历史记录
         ocf_history_hash_add(req);
         ocf_req_clear(req);
         req->force_pt = true;
@@ -264,13 +286,13 @@ int ocf_read_generic(struct ocf_request* req) {
                 /* Lock was not acquired, need to wait for resume */
                 OCF_DEBUG_RQ(req, "NO LOCK");
 #if OCF_DEBUG_ENABLED
-                printf("[Debug] IO NO Lock           Address: %12lluKB, Size: %8uKB\n", req->ioi.io.addr / 1024, req->ioi.io.bytes / 1024);
+                printf("[Debug] IO NO Lock           Address: %14llu, Size: %8uKB\n", req->ioi.io.addr, req->ioi.io.bytes / 1024);
 #endif
             } else {
                 // 尝试往缓存中写入的 IO 操作
                 /* 增加缓存写入计数并打印信息 */
 #if OCF_DEBUG_ENABLED
-                printf("[Debug] IO Write Cache       Address: %12lluKB, Size: %8uKB\n", req->ioi.io.addr / 1024, req->ioi.io.bytes / 1024);
+                printf("[Debug] IO Write Cache       Address: %14llu, Size: %8uKB\n", req->ioi.io.addr, req->ioi.io.bytes / 1024);
 #endif
                 env_atomic_inc(&cache_write_requests);
                 // if (env_atomic_read(&cache_write_requests) % 10 == 0) {
@@ -289,7 +311,7 @@ int ocf_read_generic(struct ocf_request* req) {
             OCF_DEBUG_RQ(req, "LOCK ERROR %d", lock);
 
 #if OCF_DEBUG_ENABLED
-            printf("[Debug] IO Lock Error        Address: %12lluKB, Size: %8uKB\n", req->ioi.io.addr / 1024, req->ioi.io.bytes / 1024);
+            printf("[Debug] IO Lock Error        Address: %14llu, Size: %8uKB\n", req->ioi.io.addr, req->ioi.io.bytes / 1024);
 #endif
 
             req->complete(req, lock);
@@ -297,7 +319,7 @@ int ocf_read_generic(struct ocf_request* req) {
         }
     } else {
 #if OCF_DEBUG_ENABLED
-        printf("[Debug] IO PT, Map error     Address: %12lluKB, Size: %8uKB\n", req->ioi.io.addr / 1024, req->ioi.io.bytes / 1024);
+        printf("[Debug] IO PT, Map error     Address: %14llu, Size: %8uKB\n", req->ioi.io.addr, req->ioi.io.bytes / 1024);
 #endif
         ocf_req_clear(req);
         req->force_pt = true;
