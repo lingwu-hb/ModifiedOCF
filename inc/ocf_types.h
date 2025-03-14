@@ -35,37 +35,36 @@ typedef uint16_t ocf_part_id_t;
 /**
  * @brief handle to object designating ocf context
  */
-typedef struct ocf_ctx *ocf_ctx_t;
+typedef struct ocf_ctx* ocf_ctx_t;
 
 struct ocf_cache;
 /**
  * @brief handle to object designating ocf cache device
  */
-typedef struct ocf_cache *ocf_cache_t;
+typedef struct ocf_cache* ocf_cache_t;
 
 struct ocf_core;
 /**
  * @brief handle to object designating ocf core object
  */
-typedef struct ocf_core *ocf_core_t;
+typedef struct ocf_core* ocf_core_t;
 
 struct ocf_volume;
 /**
  * @brief handle to object designating ocf volume
  */
-typedef struct ocf_volume *ocf_volume_t;
-
+typedef struct ocf_volume* ocf_volume_t;
 
 struct ocf_volume_type;
 /**
  * @brief handle to volume type
  */
-typedef struct ocf_volume_type *ocf_volume_type_t;
+typedef struct ocf_volume_type* ocf_volume_type_t;
 
 /**
  * @brief handle to volume uuid
  */
-typedef struct ocf_volume_uuid *ocf_uuid_t;
+typedef struct ocf_volume_uuid* ocf_uuid_t;
 
 /**
  * @brief handle to object designating ocf context object
@@ -75,21 +74,21 @@ typedef void ctx_data_t;
 /**
  * @brief handle to I/O queue
  */
-typedef struct ocf_queue *ocf_queue_t;
+typedef struct ocf_queue* ocf_queue_t;
 
 /**
  * @brief handle to cleaner
  */
-typedef struct ocf_cleaner *ocf_cleaner_t;
+typedef struct ocf_cleaner* ocf_cleaner_t;
 
 /**
  * @brief handle to metadata_updater
  */
-typedef struct ocf_metadata_updater *ocf_metadata_updater_t;
+typedef struct ocf_metadata_updater* ocf_metadata_updater_t;
 
 /**
  * @brief handle to logger
  */
-typedef struct ocf_logger *ocf_logger_t;
+typedef struct ocf_logger* ocf_logger_t;
 
 #endif
