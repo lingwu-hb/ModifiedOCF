@@ -174,6 +174,8 @@ static void ocf_engine_update_req_info(struct ocf_cache* cache,
         }
     }
 
+    // lookup_remapped 状态为中间状态，表示已经为数据分配了新的缓存空间，
+    // 但是数据还未完全从后端盘写入到缓冲中的状态
     if (entry->status == LOOKUP_REMAPPED)
         req->info.insert_no++;
 

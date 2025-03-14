@@ -234,6 +234,7 @@ void ocf_submit_cache_reqs(struct ocf_cache* cache,
     ENV_BUG_ON(req->byte_length < offset + size);
     ENV_BUG_ON(first_cl + reqs > req->core_line_count);
 
+    // reqs 为 1，说明该请求为完全连续的请求，可以进行合并处理
     if (reqs == 1) {
         addr = ocf_metadata_map_lg2phy(cache,
                                        req->map[first_cl].coll_idx);
