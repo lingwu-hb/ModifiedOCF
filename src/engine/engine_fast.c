@@ -122,7 +122,6 @@ int ocf_read_fast(struct ocf_request* req) {
 
     hit = ocf_engine_is_hit(req);
 
-    // TODO：缓存分区设置，后续可以考虑继续研究
     part_has_space = ocf_user_part_has_space(req);
 
     if (hit && part_has_space) {
@@ -136,7 +135,6 @@ int ocf_read_fast(struct ocf_request* req) {
 
     if (hit && part_has_space) {
         OCF_DEBUG_RQ(req, "Fast path success");
-
         if (lock >= 0) {
             if (lock != OCF_LOCK_ACQUIRED) {
                 /* Lock was not acquired, need to wait for resume */
@@ -148,6 +146,7 @@ int ocf_read_fast(struct ocf_request* req) {
         } else {
             OCF_DEBUG_RQ(req, "LOCK ERROR");
             req->complete(req, lock);
+            // 其他分支都在 callback 中释放了 req
             ocf_req_put(req);
         }
     } else {

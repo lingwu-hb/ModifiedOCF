@@ -249,6 +249,7 @@ static void ocf_engine_lookup(struct ocf_request* req) {
 // @brief 主要为了更新 req->info.hit_no
 void ocf_engine_traverse(struct ocf_request* req) {
     ocf_engine_lookup(req);
+    // LRU 调整
     ocf_engine_set_hot(req);
 }
 

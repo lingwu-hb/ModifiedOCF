@@ -248,9 +248,7 @@ static int ocf_core_submit_io_fast(struct ocf_io* io, struct ocf_request* req, o
 
 void ocf_core_volume_submit_io(struct ocf_io* io) {
     env_atomic_inc(&cnt);
-#if OCF_DEBUG_ENABLED
-    printf("\n====== %d ======\n", env_atomic_read(&cnt));
-#endif
+    OCF_DEBUG_SEPARATOR(cnt);
 
     struct ocf_request* req;
     ocf_core_t core;
@@ -296,17 +294,13 @@ void ocf_core_volume_submit_io(struct ocf_io* io) {
     ocf_req_get(req);
 
     if (!ocf_core_submit_io_fast(io, req, core, cache)) {
-#if OCF_DEBUG_ENABLED
-        printf("[Debug] IO Hit               Address: %14llu, Size: %8uKB\n", req->ioi.io.addr, req->ioi.io.bytes / 1024);
-#endif
+        OCF_DEBUG_IO("Hit", req);
         ocf_core_seq_cutoff_update(core, req);
         ocf_req_put(req);
         return;
     }
 
-#if OCF_DEBUG_ENABLED
-    printf("[Debug] IO MISS              Address: %14llu, Size: %8uKB\n", req->ioi.io.addr, req->ioi.io.bytes / 1024);
-#endif
+    OCF_DEBUG_IO("Miss", req);
 
     ocf_req_put(req);
     ocf_req_clear_map(req);
