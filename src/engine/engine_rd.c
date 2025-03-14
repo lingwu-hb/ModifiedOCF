@@ -11,6 +11,7 @@
 #include "../ocf_def_priv.h"
 #include "../ocf_request.h"
 #include "../utils/utils_cache_line.h"
+#include "../utils/utils_debug.h"
 #include "../utils/utils_history_hash.h"
 #include "../utils/utils_io.h"
 #include "../utils/utils_user_part.h"
@@ -226,46 +227,49 @@ int ocf_read_generic(struct ocf_request* req) {
     ocf_io_start(&req->ioi.io);
 
     if (env_atomic_read(&cache->pending_read_misses_list_blocked)) {
-        /* There are conditions to bypass IO */
+        /* 如果有待处理的读取未命中，直接bypass到PT模式 */
         req->force_pt = true;
         ocf_get_io_if(ocf_cache_mode_pt)->read(req);
         return 0;
     }
 
-    /* Get OCF request - increase reference counter */
+    /* 增加引用计数 */
     ocf_req_get(req);
 
-    /* Set resume call backs */
+    /* 设置回调函数 */
     req->io_if = &_io_if_read_generic_resume;
     req->engine_cbs = &_rd_engine_callbacks;
 
-    // 计算请求覆盖的4K块数
-    uint64_t start_addr = req->ioi.io.addr & ~(PAGE_SIZE - 1);
-    uint64_t end_addr = (req->ioi.io.addr + req->ioi.io.bytes - 1) & ~(PAGE_SIZE - 1);
-    uint64_t total_pages = ((end_addr - start_addr) / PAGE_SIZE) + 1;
+    /* 使用宏定义计算页面对齐的地址和总页数 */
+    uint64_t start_addr = PAGE_ALIGN_DOWN(req->ioi.io.addr);
+    uint64_t end_addr = PAGE_ALIGN_DOWN(req->ioi.io.addr + req->ioi.io.bytes - 1);
+    uint64_t total_pages = PAGES_IN_REQ(start_addr, end_addr);
     uint64_t hit_pages = 0;
 
-    // 遍历每个4K块检查是否在历史记录中
+    /* 检查历史记录中的命中情况 */
     for (uint64_t curr_addr = start_addr; curr_addr <= end_addr; curr_addr += PAGE_SIZE) {
         if (ocf_history_hash_find(curr_addr, ocf_core_get_id(req->core))) {
             hit_pages++;
         }
     }
 
-    // 计算命中率并判断
-    float hit_ratio = (float)hit_pages / total_pages;
-    bool is_in_history = (hit_ratio >= HISTORY_HIT_RATIO_THRESHOLD);
-
-    // 每1000个请求输出一次哈希表状态
+    /* 每1000个请求输出一次统计信息 */
     if (env_atomic_read(&total_requests) % 1000 == 0) {
         ocf_history_hash_print_stats();
-        // ocf_debug_stats(hit_pages, total_pages);
     }
 
-    if (!is_in_history) {  // 如果历史 IO 中命中率不够，则将请求添加到历史 IO 中，直接 pass-thru
+    /* 如果历史命中率低于阈值，添加未命中的4K块到历史记录并直接PT */
+    if ((float)hit_pages / total_pages < HISTORY_HIT_RATIO_THRESHOLD) {
         OCF_DEBUG_IO("PT, History miss", req);
-        // 将所有未命中的4K块添加到历史记录
-        ocf_history_hash_add(req);
+
+        // 只将未命中的4K块添加到历史记录
+        // TODO：这里可以加上一个 Map，记录哪些没有命中，不用再 hash find 一遍了
+        for (uint64_t curr_addr = start_addr; curr_addr <= end_addr; curr_addr += PAGE_SIZE) {
+            if (!ocf_history_hash_find(curr_addr, ocf_core_get_id(req->core))) {
+                ocf_history_hash_add_addr(curr_addr, ocf_core_get_id(req->core));
+            }
+        }
+
         ocf_req_clear(req);
         req->force_pt = true;
         ocf_get_io_if(ocf_cache_mode_pt)->read(req);
@@ -273,35 +277,25 @@ int ocf_read_generic(struct ocf_request* req) {
         return 0;
     }
 
+    /* 准备缓存行 */
     lock = ocf_engine_prepare_clines(req);
 
     if (!ocf_req_test_mapping_error(req)) {
         if (lock >= 0) {
-            if (lock != OCF_LOCK_ACQUIRED) {
-                /* Lock was not acquired, need to wait for resume */
-                OCF_DEBUG_RQ(req, "NO LOCK");
-                OCF_DEBUG_IO("NO Lock", req);
-            } else {
-                // 尝试往缓存中写入的 IO 操作
+            if (lock == OCF_LOCK_ACQUIRED) {
                 /* 增加缓存写入计数并打印信息 */
                 OCF_DEBUG_IO("Write Cache", req);
                 env_atomic_inc(&cache_write_requests);
-                // if (env_atomic_read(&cache_write_requests) % 10 == 0) {
-                //     printf("[Cache Write] Address: %llu, Core: %u, Total: %d, Cache: %d, Ratio: %d%%\n",
-                //            req->ioi.io.addr,
-                //            ocf_core_get_id(req->core),
-                //            env_atomic_read(&total_requests),
-                //            env_atomic_read(&cache_write_requests),
-                //            env_atomic_read(&cache_write_requests) * 100 / env_atomic_read(&total_requests));
-                // }
-
-                /* Lock was acquired can perform IO */
+                /* 执行IO操作 */
                 _ocf_read_generic_do(req);
+            } else {
+                /* 未获取到锁，需要等待恢复 */
+                OCF_DEBUG_RQ(req, "NO LOCK");
+                OCF_DEBUG_IO("NO Lock", req);
             }
         } else {
             OCF_DEBUG_RQ(req, "LOCK ERROR %d", lock);
             OCF_DEBUG_IO("Lock Error", req);
-
             req->complete(req, lock);
             ocf_req_put(req);
         }
@@ -312,7 +306,7 @@ int ocf_read_generic(struct ocf_request* req) {
         ocf_get_io_if(ocf_cache_mode_pt)->read(req);
     }
 
-    /* Put OCF request - decrease reference counter */
+    /* 减少引用计数 */
     ocf_req_put(req);
 
     return 0;

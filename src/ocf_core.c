@@ -11,6 +11,7 @@
 #include "ocf_priv.h"
 #include "ocf_request.h"
 #include "ocf_trace_priv.h"
+#include "utils/utils_debug.h"
 #include "utils/utils_user_part.h"
 
 static env_atomic cnt;
@@ -239,6 +240,7 @@ static int ocf_core_submit_io_fast(struct ocf_io* io, struct ocf_request* req, o
     fast = ocf_engine_hndl_fast_req(req);
     if (fast != OCF_FAST_PATH_NO) {
         ocf_trace_push(io->io_queue, &trace_event, sizeof(trace_event));
+        // 正常命中，会返回 zero
         return 0;
     }
 
