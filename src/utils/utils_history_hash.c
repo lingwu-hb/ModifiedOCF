@@ -11,37 +11,6 @@
 #include "../ocf_def_priv.h"
 #include "../ocf_request.h"
 
-/* 定义哈希表大小 */
-#define INITIAL_HASH_SIZE 1024
-#define MIN_HASH_SIZE 512
-#define MAX_HASH_SIZE 65536
-#define HASH_RESIZE_THRESHOLD 0.75  // 哈希表负载因子阈值
-#define TIME_THRESHOLD 2            // 设定请求次数阈值
-#define INITIAL_MAX_HISTORY 100     // 初始最大历史请求数
-#define MIN_MAX_HISTORY 50
-#define MAX_MAX_HISTORY 10000
-
-/* 添加LRU链表头尾节点 */
-static history_node_t* lru_head = NULL;  // 最近访问的节点
-static history_node_t* lru_tail = NULL;  // 最早访问的节点
-
-/* 哈希表 */
-static history_node_t** history_hash = NULL;
-static unsigned int current_hash_size = INITIAL_HASH_SIZE;
-static int history_count = 0;
-static int max_history = INITIAL_MAX_HISTORY;
-static uint64_t current_timestamp = 0;
-static uint64_t hit_count = 0;        // 命中次数
-static uint64_t miss_count = 0;       // 未命中次数
-static uint64_t collision_count = 0;  // 哈希冲突次数
-static uint64_t longest_chain = 0;    // 最长链长度
-
-/* 线程安全锁 */
-static env_spinlock history_lock;
-
-/* 内存池 */
-static struct env_mpool* history_node_pool = NULL;
-
 /* 初始化哈希表 */
 int ocf_history_hash_init(struct ocf_ctx* ocf_ctx) {
     if (history_hash == NULL) {
@@ -50,19 +19,19 @@ int ocf_history_hash_init(struct ocf_ctx* ocf_ctx) {
             memset(history_hash, 0, sizeof(history_node_t*) * current_hash_size);
         }
         env_spinlock_init(&history_lock);
-        
+
         // 创建内存池
         history_node_pool = env_mpool_create(
-            sizeof(history_node_t),    // 节点大小
-            0,                         // 不需要额外空间
-            ENV_MEM_NORMAL,           // 内存类型
-            ocf_req_size_128,         // 最大大小
-            false,                    // 不需要零初始化
-            NULL,                     // 没有限制
-            "history_node",           // 池名称
-            true                      // 允许扩展
+            sizeof(history_node_t),  // 节点大小
+            0,                       // 不需要额外空间
+            ENV_MEM_NORMAL,          // 内存类型
+            1,                       // 最大大小
+            false,                   // 不需要零初始化
+            NULL,                    // 没有限制
+            "history_node",          // 池名称
+            true                     // 允许扩展
         );
-        
+
         if (!history_node_pool) {
             env_free(history_hash);
             history_hash = NULL;
@@ -292,7 +261,7 @@ static void cleanup_lru_history(void) {
                 // 如果是链表头节点,更新哈希表槽位指针
                 history_hash[hash] = node->next;
             }
-            
+
             // 使用内存池释放节点
             env_mpool_del(history_node_pool, node, 1);
             history_count--;

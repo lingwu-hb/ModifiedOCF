@@ -25,8 +25,6 @@
 #define OCF_ENGINE_DEBUG_IO_NAME "rd"
 #include "engine_debug.h"
 
-#define HISTORY_HIT_RATIO_THRESHOLD 0.7  // 70%的4K块命中才算请求命中
-
 static env_atomic total_requests;
 static env_atomic cache_write_requests;
 
@@ -255,7 +253,7 @@ int ocf_read_generic(struct ocf_request* req) {
 
     /* 每1000个请求输出一次统计信息 */
     if (env_atomic_read(&total_requests) % 1000 == 0) {
-        ocf_history_hash_print_stats();
+        // ocf_history_hash_print_stats();
     }
 
     /* 如果历史命中率低于阈值，添加未命中的4K块到历史记录并直接PT */

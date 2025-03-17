@@ -30,9 +30,40 @@ struct history_node {
 };
 typedef struct history_node history_node_t;
 
+/* 定义哈希表大小 */
+#define INITIAL_HASH_SIZE 4096
+#define MIN_HASH_SIZE 2048
+#define MAX_HASH_SIZE 262144
+#define HASH_RESIZE_THRESHOLD 0.6
+#define HISTORY_HIT_RATIO_THRESHOLD 0.7  // 70%的4K块命中才算请求命中
+#define INITIAL_MAX_HISTORY 1000         // 初始最大历史请求数
+#define MIN_MAX_HISTORY 500
+#define MAX_MAX_HISTORY 100000
+
+/* 添加LRU链表头尾节点 */
+static history_node_t* lru_head = NULL;  // 最近访问的节点
+static history_node_t* lru_tail = NULL;  // 最早访问的节点
+
+/* 哈希表 */
+static history_node_t** history_hash = NULL;
+static unsigned int current_hash_size = INITIAL_HASH_SIZE;
+static int history_count = 0;
+static int max_history = INITIAL_MAX_HISTORY;
+static uint64_t current_timestamp = 0;
+static uint64_t hit_count = 0;        // 命中次数
+static uint64_t miss_count = 0;       // 未命中次数
+static uint64_t collision_count = 0;  // 哈希冲突次数
+static uint64_t longest_chain = 0;    // 最长链长度
+
+/* 线程安全锁 */
+static env_spinlock history_lock;
+
+/* 内存池 */
+static struct env_mpool* history_node_pool = NULL;
+
 /**
  * @brief 初始化历史IO哈希表
- * 
+ *
  * @param ocf_ctx OCF上下文
  * @return int 0表示成功，非0表示失败
  */
