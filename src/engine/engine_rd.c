@@ -256,16 +256,15 @@ int ocf_read_generic(struct ocf_request* req) {
         // ocf_history_hash_print_stats();
     }
 
-    /* 如果历史命中率低于阈值，添加未命中的4K块到历史记录并直接PT */
+    /* 如果历史命中率低于阈值，添加的 4K 块到历史记录并直接PT */
     if ((float)hit_pages / total_pages < HISTORY_HIT_RATIO_THRESHOLD) {
         OCF_DEBUG_IO("PT, History miss", req);
 
-        // 只将未命中的4K块添加到历史记录
-        // TODO：这里可以加上一个 Map，记录哪些没有命中，不用再 hash find 一遍了
+        // 将当前请求涉及到的所有 4K 块都尝试添加到历史记录中
+        // 因为考虑到要更新 LRU 链表，所有需要都进行尝试添加
+        // need to mantain: 理论上命中的块不需要添加，此处为了方便，没有重整代码
         for (uint64_t curr_addr = start_addr; curr_addr <= end_addr; curr_addr += PAGE_SIZE) {
-            if (!ocf_history_hash_find(curr_addr, ocf_core_get_id(req->core))) {
-                ocf_history_hash_add_addr(curr_addr, ocf_core_get_id(req->core));
-            }
+            ocf_history_hash_add_addr(curr_addr, ocf_core_get_id(req->core));
         }
 
         ocf_req_clear(req);

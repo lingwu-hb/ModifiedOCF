@@ -70,13 +70,13 @@ static struct env_mpool* history_node_pool = NULL;
 int ocf_history_hash_init(struct ocf_ctx* ocf_ctx);
 
 /**
- * @brief 在哈希表中查找请求
+ * @brief 在哈希表中查找 4K 块
  *
- * @param addr 请求地址
+ * @param addr 4K 块地址
  * @param core_id 核心ID
  *
- * @retval true 找到匹配的请求
- * @retval false 未找到匹配的请求
+ * @retval true 找到匹配的 4K 块
+ * @retval false 未找到匹配的 4K 块
  */
 bool ocf_history_hash_find(uint64_t addr, int core_id);
 

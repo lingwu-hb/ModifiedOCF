@@ -95,7 +95,7 @@ static void remove_from_lru(history_node_t* node) {
         lru_tail = node->prev_lru;  // 节点是尾节点
 }
 
-/* 在哈希表中查找请求 */
+/* 在哈希表中查找 4K 块 */
 bool ocf_history_hash_find(uint64_t addr, int core_id) {
     if (!history_hash) {
         ocf_history_hash_init(NULL);
@@ -109,8 +109,8 @@ bool ocf_history_hash_find(uint64_t addr, int core_id) {
     env_spinlock_lock(&history_lock);
 
     unsigned int hash = calc_hash(aligned_addr, core_id);
-    struct history_node* node = history_hash[hash];
-    struct history_node* prev = NULL;
+    history_node_t* node = history_hash[hash];
+    history_node_t* prev = NULL;
     uint32_t chain_length = 0;
 
     while (node) {
@@ -272,13 +272,13 @@ static void cleanup_lru_history(void) {
     }
 }
 
-/* 添加地址到哈希表 */
+/* 添加未命中的 4K 块到哈希表 */
 void ocf_history_hash_add_addr(uint64_t addr, int core_id) {
     if (!history_hash) {
         ocf_history_hash_init(NULL);
     }
 
-    // 将地址按4K对齐
+    // 将地址按 4K 对齐
     uint64_t aligned_addr = PAGE_ALIGN_DOWN(addr);
 
     env_spinlock_lock(&history_lock);
