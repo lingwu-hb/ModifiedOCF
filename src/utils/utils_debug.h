@@ -10,6 +10,9 @@
 #define OCF_DEBUG_LOG(fmt, ...) \
     printf("[Debug] " fmt "\n", ##__VA_ARGS__)
 
+#define OCF_DEBUG_HISTORY(fmt, ...) \
+    printf("[Debug] " fmt "\n", ##__VA_ARGS__)
+
 // IO操作相关的调试信息
 #define OCF_DEBUG_IO(type, req, ...)                                         \
     printf("[Debug] IO %-18s Address: %14llu, Size: %8uKB" __VA_ARGS__ "\n", \
@@ -30,6 +33,7 @@
 #else
 
 #define OCF_DEBUG_LOG(fmt, ...)
+#define OCF_DEBUG_HISTORY(fmt, ...)
 #define OCF_DEBUG_IO(type, req, ...)
 #define OCF_DEBUG_STATS(hit_pages, total_pages)
 #define OCF_DEBUG_SEPARATOR(counter)

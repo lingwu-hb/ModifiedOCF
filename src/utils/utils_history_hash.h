@@ -56,7 +56,7 @@ static uint64_t collision_count = 0;  // 哈希冲突次数
 static uint64_t longest_chain = 0;    // 最长链长度
 
 /* 线程安全锁 */
-static env_spinlock history_lock;
+// static env_spinlock history_lock;
 
 /* 内存池 */
 static struct env_mpool* history_node_pool = NULL;

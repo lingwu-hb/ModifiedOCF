@@ -10,6 +10,7 @@
 #include "../ocf_cache_priv.h"
 #include "../ocf_def_priv.h"
 #include "../ocf_request.h"
+#include "utils_debug.h"
 
 /* 初始化哈希表 */
 int ocf_history_hash_init(struct ocf_ctx* ocf_ctx) {
@@ -18,7 +19,7 @@ int ocf_history_hash_init(struct ocf_ctx* ocf_ctx) {
         if (history_hash) {
             memset(history_hash, 0, sizeof(history_node_t*) * current_hash_size);
         }
-        env_spinlock_init(&history_lock);
+        // env_spinlock_init(&history_lock);
 
         // 创建内存池
         history_node_pool = env_mpool_create(
@@ -106,7 +107,7 @@ bool ocf_history_hash_find(uint64_t addr, int core_id) {
     uint64_t aligned_addr = PAGE_ALIGN_DOWN(addr);
     bool found = false;
 
-    env_spinlock_lock(&history_lock);
+    // env_spinlock_lock(&history_lock);  // 注释掉锁
 
     unsigned int hash = calc_hash(aligned_addr, core_id);
     history_node_t* node = history_hash[hash];
@@ -150,7 +151,7 @@ bool ocf_history_hash_find(uint64_t addr, int core_id) {
         miss_count++;
     }
 
-    env_spinlock_unlock(&history_lock);
+    // env_spinlock_unlock(&history_lock);  // 注释掉锁
     return found;
 }
 
@@ -182,8 +183,8 @@ static void resize_hash_table(unsigned int new_size) {
     history_hash = new_hash;
     current_hash_size = new_size;
 
-    printf("[Hash Resize] New hash size: %u, History count: %d, Max history: %d\n",
-           current_hash_size, history_count, max_history);
+    OCF_DEBUG_HISTORY("[Hash Resize] New hash size: %u, History count: %d, Max history: %d\n",
+                      current_hash_size, history_count, max_history)
 }
 
 /* 检查是否需要调整哈希表大小 */
@@ -217,16 +218,16 @@ static void check_and_resize_hash_table(void) {
             max_history = max_history * 2;
             if (max_history > MAX_MAX_HISTORY)
                 max_history = MAX_MAX_HISTORY;
-            printf("[History Adjust] Increasing max history to %d (hit ratio: %.2f%%)\n",
-                   max_history, hit_ratio * 100);
+            OCF_DEBUG_HISTORY("[History Adjust] Increasing max history to %d (hit ratio: %.2f%%)\n",
+                              max_history, hit_ratio * 100);
         }
         // 命中率高，可以减少历史记录容量
         else if (hit_ratio > 0.7 && max_history > MIN_MAX_HISTORY && history_count < max_history / 2) {
             max_history = max_history / 2;
             if (max_history < MIN_MAX_HISTORY)
                 max_history = MIN_MAX_HISTORY;
-            printf("[History Adjust] Decreasing max history to %d (hit ratio: %.2f%%)\n",
-                   max_history, hit_ratio * 100);
+            OCF_DEBUG_HISTORY("[History Adjust] Decreasing max history to %d (hit ratio: %.2f%%)\n",
+                              max_history, hit_ratio * 100);
         }
 
         // 重置统计
@@ -281,7 +282,7 @@ void ocf_history_hash_add_addr(uint64_t addr, int core_id) {
     // 将地址按 4K 对齐
     uint64_t aligned_addr = PAGE_ALIGN_DOWN(addr);
 
-    env_spinlock_lock(&history_lock);
+    // env_spinlock_lock(&history_lock);  // 注释掉锁
 
     // 检查是否已存在
     unsigned int hash = calc_hash(aligned_addr, core_id);
@@ -293,7 +294,7 @@ void ocf_history_hash_add_addr(uint64_t addr, int core_id) {
             node->access_count++;
             node->timestamp = current_timestamp++;
             add_to_lru_head(node);
-            env_spinlock_unlock(&history_lock);
+            // env_spinlock_unlock(&history_lock);  // 注释掉锁
             return;
         }
         node = node->next;
@@ -302,8 +303,8 @@ void ocf_history_hash_add_addr(uint64_t addr, int core_id) {
     // 从内存池分配新节点
     history_node_t* new_node = env_mpool_new(history_node_pool, 1);
     if (!new_node) {
-        OCF_DEBUG_LOG("Failed to allocate memory for new history node");
-        env_spinlock_unlock(&history_lock);
+        OCF_DEBUG_HISTORY("Failed to allocate memory for new history node");
+        // env_spinlock_unlock(&history_lock);  // 注释掉锁
         return;
     }
 
@@ -332,7 +333,7 @@ void ocf_history_hash_add_addr(uint64_t addr, int core_id) {
     /* 检查是否需要调整哈希表大小 */
     check_and_resize_hash_table();
 
-    env_spinlock_unlock(&history_lock);
+    // env_spinlock_unlock(&history_lock);  // 注释掉锁
 }
 
 /* 添加请求到哈希表 */
@@ -362,14 +363,14 @@ void ocf_history_hash_print_stats(void) {
     float hit_ratio = (hit_count + miss_count > 0) ? ((float)hit_count / (hit_count + miss_count) * 100) : 0;
     float load_factor = (float)history_count / current_hash_size;
 
-    printf("[Hash Stats] Size: %u, Count: %d, Max: %d, Load: %.2f%%, Hit Ratio: %.2f%%, Collisions: %llu\n",
-           current_hash_size, history_count, max_history,
-           load_factor * 100, hit_ratio, collision_count);
+    OCF_DEBUG_HISTORY("[Hash Stats] Size: %u, Count: %d, Max: %d, Load: %.2f%%, Hit Ratio: %.2f%%, Collisions: %llu\n",
+                      current_hash_size, history_count, max_history,
+                      load_factor * 100, hit_ratio, collision_count);
 }
 
 /* 清理哈希表资源 */
 void ocf_history_hash_cleanup(void) {
-    env_spinlock_lock(&history_lock);
+    // env_spinlock_lock(&history_lock);
 
     // 释放哈希表内存
     if (history_hash) {
@@ -396,5 +397,5 @@ void ocf_history_hash_cleanup(void) {
         history_node_pool = NULL;
     }
 
-    env_spinlock_unlock(&history_lock);
+    // env_spinlock_unlock(&history_lock);
 }
