@@ -1,5 +1,6 @@
 {
     "files.associations": {
-        "utils_history_hash.h": "c"
+        "utils_history_hash.h": "c",
+        "ocf_def_priv.h": "c"
     }
 }

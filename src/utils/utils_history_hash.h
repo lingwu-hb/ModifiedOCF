@@ -6,6 +6,7 @@
 #ifndef UTILS_HISTORY_HASH_H_
 #define UTILS_HISTORY_HASH_H_
 
+#include <stdlib.h>  // 添加标准库头文件，用于 malloc 和 free
 #include "../ocf_request.h"
 
 /* 常用位运算宏定义 */
@@ -57,9 +58,6 @@ static uint64_t longest_chain = 0;    // 最长链长度
 
 /* 线程安全锁 */
 // static env_spinlock history_lock;
-
-/* 内存池 */
-static struct env_mpool* history_node_pool = NULL;
 
 /**
  * @brief 初始化历史IO哈希表

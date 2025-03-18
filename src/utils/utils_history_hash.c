@@ -19,25 +19,9 @@ int ocf_history_hash_init(struct ocf_ctx* ocf_ctx) {
         if (history_hash) {
             memset(history_hash, 0, sizeof(history_node_t*) * current_hash_size);
         }
-        // env_spinlock_init(&history_lock);
 
-        // 创建内存池
-        history_node_pool = env_mpool_create(
-            sizeof(history_node_t),  // 节点大小
-            0,                       // 不需要额外空间
-            ENV_MEM_NORMAL,          // 内存类型
-            1,                       // 最大大小
-            false,                   // 不需要零初始化
-            NULL,                    // 没有限制
-            "history_node",          // 池名称
-            true                     // 允许扩展
-        );
-
-        if (!history_node_pool) {
-            env_free(history_hash);
-            history_hash = NULL;
-            return -OCF_ERR_NO_MEM;
-        }
+        // 移除内存池的创建和初始化
+        return history_hash ? 0 : -OCF_ERR_NO_MEM;
     }
     return 0;
 }
@@ -263,8 +247,8 @@ static void cleanup_lru_history(void) {
                 history_hash[hash] = node->next;
             }
 
-            // 使用内存池释放节点
-            env_mpool_del(history_node_pool, node, 1);
+            // 使用直接释放替代内存池释放
+            free(node);
             history_count--;
             break;
         }
@@ -300,8 +284,8 @@ void ocf_history_hash_add_addr(uint64_t addr, int core_id) {
         node = node->next;
     }
 
-    // 从内存池分配新节点
-    history_node_t* new_node = env_mpool_new(history_node_pool, 1);
+    // 使用malloc直接分配内存，替代内存池分配
+    history_node_t* new_node = (history_node_t*)malloc(sizeof(history_node_t));
     if (!new_node) {
         OCF_DEBUG_HISTORY("Failed to allocate memory for new history node");
         // env_spinlock_unlock(&history_lock);  // 注释掉锁
@@ -378,8 +362,8 @@ void ocf_history_hash_cleanup(void) {
             history_node_t* node = history_hash[i];
             while (node) {
                 history_node_t* next = node->next;
-                // 使用内存池释放节点
-                env_mpool_del(history_node_pool, node, 1);
+                // 使用直接释放替代内存池释放
+                free(node);
                 node = next;
             }
         }
@@ -391,11 +375,6 @@ void ocf_history_hash_cleanup(void) {
     lru_head = NULL;
     lru_tail = NULL;
 
-    // 销毁内存池
-    if (history_node_pool) {
-        env_mpool_destroy(history_node_pool);
-        history_node_pool = NULL;
-    }
-
+    // 不再需要销毁内存池
     // env_spinlock_unlock(&history_lock);
 }

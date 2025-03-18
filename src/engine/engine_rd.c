@@ -256,6 +256,10 @@ int ocf_read_generic(struct ocf_request* req) {
         // ocf_history_hash_print_stats();
     }
 
+    // 输出当前请求的相关信息
+    printf("\e[31m[INFO]\e[0m addr: %lx, size: %lx, start_addr: %lx, end_addr: %lx\n", req->ioi.io.addr, req->ioi.io.bytes, start_addr, end_addr);
+    printf("hit_pages: %d, total_pages: %d, hit_ratio: %f\n", hit_pages, total_pages, (float)hit_pages / total_pages);
+
     /* 如果历史命中率低于阈值，添加的 4K 块到历史记录并直接PT */
     if ((float)hit_pages / total_pages < HISTORY_HIT_RATIO_THRESHOLD) {
         OCF_DEBUG_IO("PT, History miss", req);

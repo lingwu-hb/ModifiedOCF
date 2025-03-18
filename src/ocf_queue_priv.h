@@ -43,6 +43,7 @@ static inline void ocf_queue_kick(ocf_queue_t queue, bool allow_sync)
 	if (allow_sync && queue->ops->kick_sync)
 		queue->ops->kick_sync(queue);
 	else
+		// TODO：这里没有被实现
 		queue->ops->kick(queue);
 }
 
