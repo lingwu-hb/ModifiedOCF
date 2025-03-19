@@ -272,7 +272,9 @@ void ocf_history_hash_add_addr(uint64_t addr, int core_id) {
     unsigned int hash = calc_hash(aligned_addr, core_id);
     history_node_t* node = history_hash[hash];
 
+    int depth = 0;
     while (node) {
+        depth++;
         if (node->addr == aligned_addr && node->core_id == core_id) {
             // 已存在，更新访问信息
             node->access_count++;
@@ -283,6 +285,7 @@ void ocf_history_hash_add_addr(uint64_t addr, int core_id) {
         }
         node = node->next;
     }
+    printf("Depth: %d\n", depth);
 
     // 使用malloc直接分配内存，替代内存池分配
     history_node_t* new_node = (history_node_t*)malloc(sizeof(history_node_t));

@@ -254,6 +254,47 @@ int ocf_read_generic(struct ocf_request* req) {
     /* 每1000个请求输出一次统计信息 */
     if (env_atomic_read(&total_requests) % 1000 == 0) {
         // ocf_history_hash_print_stats();
+        // 用 OCF_DEBUG_IO 输出哈希表的平均冲突链表的深度
+        if (history_hash && history_count > 0) {
+            int total_chains = 0;
+            int non_empty_buckets = 0;
+
+            // 遍历哈希表计算所有链的长度总和和非空桶数量
+            for (unsigned int i = 0; i < current_hash_size; i++) {
+                if (history_hash[i]) {
+                    int chain_length = 0;
+                    history_node_t* node = history_hash[i];
+
+                    while (node) {
+                        chain_length++;
+                        node = node->next;
+                    }
+
+                    total_chains += chain_length;
+                    non_empty_buckets++;
+                }
+            }
+
+            // 计算平均链长度
+            float avg_chain_length = non_empty_buckets > 0 ? (float)total_chains / non_empty_buckets : 0;
+
+            // 计算哈希表负载因子
+            float load_factor = (float)history_count / current_hash_size;
+
+            // 输出统计信息
+            OCF_DEBUG_LOG("Hash Stats: Size=%u, Count=%d, NonEmptyBuckets=%d, AvgChain=%.2f, Load=%.2f%%",
+                          req,
+                          current_hash_size,
+                          history_count,
+                          non_empty_buckets,
+                          avg_chain_length,
+                          load_factor * 100);
+
+            // 如果平均链长度超过阈值，可以考虑扩展哈希表
+            if (avg_chain_length > 2.0) {
+                OCF_DEBUG_LOG("Hash table collision rate is high, consider increasing hash size", req);
+            }
+        }
     }
 
     // 输出当前请求的相关信息
