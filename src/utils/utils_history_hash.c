@@ -28,9 +28,21 @@ int ocf_history_hash_init(struct ocf_ctx* ocf_ctx) {
 
 /* 计算哈希值 */
 static unsigned int calc_hash(uint64_t addr, int core_id) {
-    // 将地址按4K对齐
+    // 使用更好的哈希算法 - MurmurHash3
+    // 该算法具有更好的分布特性，可以减少哈希冲突
     uint64_t aligned_addr = PAGE_ALIGN_DOWN(addr);
-    return (unsigned int)((aligned_addr ^ core_id) % current_hash_size);
+    uint64_t h = aligned_addr;
+    
+    h ^= h >> 33;
+    h *= 0xff51afd7ed558ccdULL;
+    h ^= h >> 33;
+    h *= 0xc4ceb9fe1a85ec53ULL;
+    h ^= h >> 33;
+    
+    // 加入 core_id 作为哈希因子
+    h = h ^ ((uint64_t)core_id << 32 | core_id);
+    // 使用位运算取模
+    return (unsigned int)(h & (current_hash_size - 1));
 }
 
 /* 将节点添加到LRU链表头部 */

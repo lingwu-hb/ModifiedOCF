@@ -32,13 +32,16 @@ struct history_node {
 typedef struct history_node history_node_t;
 
 /* 定义哈希表大小 */
-#define INITIAL_HASH_SIZE 4096
-#define MIN_HASH_SIZE 2097152
-#define MAX_HASH_SIZE 268435456
+// TODO 测一下哈希表充分大的情况，看看效果
+#define INITIAL_HASH_SIZE 1073741824
+#define MIN_HASH_SIZE 1073741824
+#define MAX_HASH_SIZE 1073741824
 #define HASH_RESIZE_THRESHOLD 0.6
-#define HISTORY_HIT_RATIO_THRESHOLD 0.3  // 30%的4K块命中才算请求命中
-#define INITIAL_MAX_HISTORY 1000000      // 初始最大历史 4K 块数
-#define MIN_MAX_HISTORY 500000
+// 30%的4K块命中才算请求命中
+#define HISTORY_HIT_RATIO_THRESHOLD 0.3
+// 初始最大历史 4K 块数
+#define INITIAL_MAX_HISTORY 100000000
+#define MIN_MAX_HISTORY 100000000
 #define MAX_MAX_HISTORY 100000000
 
 /* 添加LRU链表头尾节点 */
