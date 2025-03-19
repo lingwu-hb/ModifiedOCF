@@ -262,7 +262,7 @@ int ocf_read_generic(struct ocf_request* req) {
     printf("hit_pages: %d, total_pages: %d, hit_ratio: %f\n", hit_pages, total_pages, (float)hit_pages / total_pages);
 
     // 判断缓存使用情况，缓存占满了才启用二次准入，否则不启用
-    bool cache_full = get_cache_full_status(req->cache);
+    bool cache_full = ocf_is_cache_full(req->cache);
 
     /* 如果历史命中率低于阈值，添加的 4K 块到历史记录并直接PT */
     if ((float)hit_pages / total_pages < HISTORY_HIT_RATIO_THRESHOLD && cache_full) {
