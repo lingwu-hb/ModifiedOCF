@@ -116,6 +116,9 @@ int ocf_read_pt(struct ocf_request* req) {
     /* Traverse request to check if there are mapped cache lines */
     ocf_engine_traverse(req);
 
+    
+    // TODO：分析一下 PT 流程，丁博说该流程还是会调用到缓存？
+    // 同时分析一下 IO 过滤操作！
     if (req->seq_cutoff && ocf_engine_is_dirty_all(req) &&
         !req->force_pt) {
         use_cache = true;

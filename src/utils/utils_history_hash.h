@@ -31,14 +31,24 @@ struct history_node {
 };
 typedef struct history_node history_node_t;
 
+// 哈希表数组占用：
+// 哈希表大小：1,073,741,824 个指针
+// 每个指针占 8 字节
+// 总占用：1,073,741,824 × 8 = 8,589,934,592 字节 ≈ 8.59 GB
+// 历史节点占用：
+// 最大节点数：100,000,000 个节点
+// 每个节点占 56 字节（考虑内存对齐）
+// 总占用：100,000,000 × 56 = 5,600,000,000 字节 ≈ 5.6 GB
+
 /* 定义哈希表大小 */
 // TODO 测一下哈希表充分大的情况，看看效果
-#define INITIAL_HASH_SIZE 1073741824
-#define MIN_HASH_SIZE 1073741824
-#define MAX_HASH_SIZE 1073741824
+// 64MB 的哈希表，1 亿个节点
+#define INITIAL_HASH_SIZE 67108864
+#define MIN_HASH_SIZE 67108864
+#define MAX_HASH_SIZE 67108864
 #define HASH_RESIZE_THRESHOLD 0.6
 // 30%的4K块命中才算请求命中
-#define HISTORY_HIT_RATIO_THRESHOLD 0.3
+#define HISTORY_HIT_RATIO_THRESHOLD 0.3  
 // 初始最大历史 4K 块数
 #define INITIAL_MAX_HISTORY 100000000
 #define MIN_MAX_HISTORY 100000000
@@ -110,5 +120,22 @@ void ocf_history_hash_print_final_stats(void);
  * @brief 清理哈希表资源
  */
 void ocf_history_hash_cleanup(void);
+
+/**
+ * 检查缓存是否已满
+ * 
+ * 通过调用 OCF 缓存监控接口检查缓存使用情况
+ * 
+ * @param cache OCF缓存实例
+ * @return 如果缓存已满返回true，否则返回false
+ */
+bool ocf_is_cache_full(ocf_cache_t cache);
+
+/**
+ * 设置缓存满阈值
+ * 
+ * @param threshold 新的阈值(0-100)
+ */
+void ocf_set_cache_full_threshold(uint32_t threshold);
 
 #endif /* UTILS_HISTORY_HASH_H_ */

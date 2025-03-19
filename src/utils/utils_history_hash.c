@@ -3,14 +3,56 @@
  * SPDX-License-Identifier: BSD-3-Clause-Clear
  */
 
+#include <ocf/ocf.h>
+#include <ocf/ocf_types.h>
+#include <ocf/ocf_stats.h>
 #include "utils_history_hash.h"
 #include <signal.h>
 #include <stdio.h>
-#include "../../inc/ocf.h"  // 添加必要的头文件
 #include "../ocf_cache_priv.h"
 #include "../ocf_def_priv.h"
 #include "../ocf_request.h"
 #include "utils_debug.h"
+
+// 缓存占用率阈值，默认为99%
+static uint32_t cache_full_threshold = 99;
+
+/**
+ * 设置缓存满阈值
+ * 
+ * @param threshold 新的阈值(0-100)
+ */
+void ocf_set_cache_full_threshold(uint32_t threshold) {
+    if (threshold > 0 && threshold <= 100) {
+        cache_full_threshold = threshold;
+    }
+}
+
+/**
+ * 检查缓存是否已满
+ * 
+ * @param cache OCF缓存实例
+ * @return 如果缓存已满返回true，否则返回false
+ */
+bool ocf_is_cache_full(ocf_cache_t cache) {
+    struct ocf_stats_usage stats;
+    int status;
+    
+    // 获取缓存使用统计信息
+    status = ocf_stats_get_usage(cache, &stats);
+    if (status != 0) {
+        // 获取统计信息失败，默认返回false
+        return false;
+    }
+    
+    if (stats.size == 0) {
+        return false; // 避免除零错误
+    }
+    
+    uint32_t occupancy_percentage = (stats.occupancy * 100) / stats.size;
+    
+    return (occupancy_percentage >= cache_full_threshold);
+}
 
 /* 初始化哈希表 */
 int ocf_history_hash_init(struct ocf_ctx* ocf_ctx) {
