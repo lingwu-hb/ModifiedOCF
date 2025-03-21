@@ -1,4 +1,116 @@
-* 缓存相关变量
+# IO 流程
+
+
+
+```c++
+ocf_core_volume_submit_io
+    -> ocf_engine_hndl_req
+    	-> ocf_engine_push_req_back // 将 req 放入到 req->io_queue 中
+```
+
+```c++
+// 不断对 queue 中的请求进行处理
+void ocf_queue_run(ocf_queue_t q)
+{
+	unsigned char step = 0;
+
+	OCF_CHECK_NULL(q);
+
+	while (env_atomic_read(&q->io_no) > 0) {
+        // 从 q 中拿出一个 req，出队然后执行 req->io_if->read 进行读取
+		ocf_queue_run_single(q); 
+        // 每隔 128 个请求让出 CPU，避免长时间占用
+		OCF_COND_RESCHED(step, 128);
+	}
+}
+```
+
+## read_generic 流程
+
+
+
+## read_pt 流程
+
+
+
+TODO：分析这两者关于锁机制的一些细节
+
+
+
+# 锁机制分析
+
+首先尝试快速获取锁，如果快速获取锁失败，再慢速获取锁。
+
+```c
+int ocf_alock_lock_rd(struct ocf_alock *alock,
+		struct ocf_request *req, ocf_req_async_lock_cb cmpl)
+{
+	int lock, status;
+
+	ENV_BUG_ON(env_atomic_read(&req->lock_remaining));
+	req->alock_rw = OCF_READ;
+
+	lock = alock->cbs->lock_entries_fast(alock, req, OCF_READ);
+
+	if (lock != OCF_LOCK_ACQUIRED) {
+		env_mutex_lock(&alock->lock);
+
+		ENV_BUG_ON(env_atomic_read(&req->lock_remaining));
+		ENV_BUG_ON(!cmpl);
+
+		env_atomic_inc(&alock->waiting);
+		env_atomic_set(&req->lock_remaining, req->core_line_count);
+		env_atomic_inc(&req->lock_remaining);
+
+		status = alock->cbs->lock_entries_slow(alock, req, OCF_READ, cmpl);
+		if (!status) {
+			if (env_atomic_dec_return(&req->lock_remaining) == 0) {
+				lock = OCF_LOCK_ACQUIRED;
+				env_atomic_dec(&alock->waiting);
+			}
+		} else {
+			env_atomic_set(&req->lock_remaining, 0);
+			env_atomic_dec(&alock->waiting);
+			lock = status;
+		}
+		env_mutex_unlock(&alock->lock);
+	}
+
+	return lock;
+}
+```
+
+TODO：快速获取锁 和 慢速获取锁 流程上的区别？相关变量的具体含义？
+
+
+
+
+
+# OCF 内部哈希表实现
+
+有时间可以研究一下其是如何设计缓存哈希表，以及其是如何使用锁进行并发管理的。
+
+```c
+ocf_cache_line_t ocf_metadata_get_hash(struct ocf_cache *cache,
+		ocf_cache_line_t index)
+{
+	struct ocf_metadata_ctrl *ctrl
+		= (struct ocf_metadata_ctrl *) cache->metadata.priv;
+
+	return *(ocf_cache_line_t *)ocf_metadata_raw_rd_access(cache,
+			&(ctrl->raw_desc[metadata_segment_hash]), index);
+}
+```
+
+
+
+
+
+
+
+# 缓存相关变量
+
+
 
 ```c
 struct ocf_req_info {
@@ -66,7 +178,7 @@ struct ocf_req_info {
 };
 ```
 
-* 处理机制
+## 处理机制
 
 ```c
 static void ocf_engine_process_request(struct ocf_request *req) {

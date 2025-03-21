@@ -47,6 +47,18 @@ void ocf_alock_unlock_one_wr(struct ocf_alock *alock,
 int ocf_alock_lock_rd(struct ocf_alock *alock,
 		struct ocf_request *req, ocf_req_async_lock_cb cmpl);
 
+/**
+ * @brief Try to acquire read lock on request cachelines (fast only)
+ * @param alock - Cache-line lock
+ * @param req - Request
+ * @note This function only tries fast lock acquisition, it won't attempt to wait
+ *       if lock can't be acquired immediately
+ * @return OCF_LOCK_ACQUIRED if all locks acquired, OCF_LOCK_NOT_ACQUIRED if at least
+ *         one lock wasn't acquired or error code
+ */
+int ocf_alock_lock_rd_fast_only(struct ocf_alock *alock,
+		struct ocf_request *req);
+
 int ocf_alock_lock_wr(struct ocf_alock *alock,
 		struct ocf_request *req, ocf_req_async_lock_cb cmpl);
 

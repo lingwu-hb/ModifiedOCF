@@ -20,6 +20,9 @@ static inline ocf_cache_line_t ocf_metadata_hash_func(ocf_cache_t cache,
                                                       ocf_core_id_t core_id) {
     const unsigned int entries = cache->device->hash_table_entries;
 
+    /* TODO：entries 指 hash_table_entries，即 hash 表的桶数
+     *       这里 hash 表的桶数具体指多少？
+     */
     return (ocf_cache_line_t)((core_line_num + (core_id * (entries / 32))) % entries);
 }
 

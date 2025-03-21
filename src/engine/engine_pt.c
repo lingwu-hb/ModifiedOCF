@@ -64,6 +64,8 @@ int ocf_read_pt_do(struct ocf_request* req) {
         return 0;
     }
 
+
+
     if (ocf_engine_needs_repart(req)) {
         OCF_DEBUG_RQ(req, "Re-Part");
 
@@ -113,23 +115,22 @@ int ocf_read_pt(struct ocf_request* req) {
     ocf_req_hash(req);
     ocf_hb_req_prot_lock_rd(req);
 
-    /* Traverse request to check if there are mapped cache lines */
+    /* 遍历请求，检查是否存在映射的缓存行 */
     ocf_engine_traverse(req);
 
-    
-    // TODO：分析一下 PT 流程，丁博说该流程还是会调用到缓存？
-    // 同时分析一下 IO 过滤操作！
+    // 走到 PT 流程的请求，一定是 force_pt 为 true
     if (req->seq_cutoff && ocf_engine_is_dirty_all(req) &&
         !req->force_pt) {
         use_cache = true;
     } else {
+        // 如果请求中存在映射的缓存行，则需要获取读锁
         if (ocf_engine_mapped_count(req)) {
             /* There are mapped cache line,
-             * lock request for READ access
+             * lock request for READ access (only try fast lock)
              */
-            lock = ocf_req_async_lock_rd(
+            lock = ocf_req_async_lock_rd_fast_only(
                 req->cache->device->concurrency.cache_line,
-                req, ocf_engine_on_resume);
+                req);
         } else {
             /* No mapped cache lines, no need to get lock */
             lock = OCF_LOCK_ACQUIRED;
@@ -156,6 +157,7 @@ int ocf_read_pt(struct ocf_request* req) {
             }
         } else {
             OCF_DEBUG_RQ(req, "LOCK ERROR %d", lock);
+            // 调用用户回调函数，返回错误
             req->complete(req, lock);
             ocf_req_put(req);
         }

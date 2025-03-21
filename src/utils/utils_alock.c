@@ -693,6 +693,13 @@ void ocf_alock_waitlist_remove_entry(struct ocf_alock *alock,
 	ocf_alock_waitlist_unlock(alock, entry, flags);
 }
 
+/*
+ * 尝试获取读锁
+ * 返回值:
+ * OCF_LOCK_ACQUIRED - 成功获取锁
+ * OCF_LOCK_NOT_ACQUIRED - 未获取锁,但已加入等待队列
+ * -OCF_ERR_NO_MEM - 内存不足,无法加入等待队列
+ */
 int ocf_alock_lock_rd(struct ocf_alock *alock,
 		struct ocf_request *req, ocf_req_async_lock_cb cmpl)
 {
@@ -726,6 +733,28 @@ int ocf_alock_lock_rd(struct ocf_alock *alock,
 		}
 		env_mutex_unlock(&alock->lock);
 	}
+
+	return lock;
+}
+
+/**
+ * @brief Try to acquire read lock on request cachelines (fast only)
+ * @param alock - Cache-line lock
+ * @param req - Request
+ * @note This function only tries fast lock acquisition, it won't attempt to wait
+ *       if lock can't be acquired immediately
+ * @return OCF_LOCK_ACQUIRED if all locks acquired, OCF_LOCK_NOT_ACQUIRED if at least
+ *         one lock wasn't acquired or error code
+ */
+int ocf_alock_lock_rd_fast_only(struct ocf_alock *alock,
+		struct ocf_request *req)
+{
+	int lock;
+
+	ENV_BUG_ON(env_atomic_read(&req->lock_remaining));
+	req->alock_rw = OCF_READ;
+
+	lock = alock->cbs->lock_entries_fast(alock, req, OCF_READ);
 
 	return lock;
 }

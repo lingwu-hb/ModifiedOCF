@@ -12,11 +12,7 @@
 #include "../ocf_cache_priv.h"
 #include "../ocf_def_priv.h"
 #include "../ocf_request.h"
-#include "../ocf_err.h"
 #include "utils_debug.h"
-
-// 定义页大小为4KB
-#define PAGE_SIZE 4096
 
 // 缓存占用率阈值，默认为99%
 static uint32_t cache_full_threshold = 99;
@@ -226,7 +222,7 @@ static void resize_hash_table(unsigned int new_size) {
     current_hash_size = new_size;
 
     OCF_DEBUG_HISTORY("[Hash Resize] New hash size: %u, History count: %d, Max history: %d\n",
-                      current_hash_size, history_count, max_history);
+                      current_hash_size, history_count, max_history)
 }
 
 /* 检查是否需要调整哈希表大小 */

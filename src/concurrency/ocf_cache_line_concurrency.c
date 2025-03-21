@@ -170,6 +170,18 @@ int ocf_req_async_lock_rd(struct ocf_alock* alock,
     return ocf_alock_lock_rd(alock, req, cmpl);
 }
 
+/**
+ * @brief 对请求中的缓存行尝试获取读锁（只进行快速尝试）
+ * @param alock - 缓存行锁
+ * @param req - 请求
+ * @note 该函数只尝试快速获取锁，如果无法立即获取锁，不会尝试等待
+ * @return OCF_LOCK_ACQUIRED 如果所有锁都已获取，OCF_LOCK_NOT_ACQUIRED 如果至少有一个锁没有获取，或错误码
+ */
+int ocf_req_async_lock_rd_fast_only(struct ocf_alock* alock,
+                                   struct ocf_request* req) {
+    return ocf_alock_lock_rd_fast_only(alock, req);
+}
+
 int ocf_req_async_lock_wr(struct ocf_alock* alock,
                           struct ocf_request* req,
                           ocf_req_async_lock_cb cmpl) {

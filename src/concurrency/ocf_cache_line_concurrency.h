@@ -85,6 +85,17 @@ int ocf_req_async_lock_rd(struct ocf_alock *c,
 		struct ocf_request *req, ocf_req_async_lock_cb cmpl);
 
 /**
+ * @brief 对请求中的缓存行尝试获取读锁（只进行快速尝试）
+ * @param c - 缓存行并发控制的私有数据
+ * @param req - OCF 请求
+ * @note 该函数只尝试快速获取锁，如果无法立即获取锁，不会尝试等待
+ * @retval OCF_LOCK_ACQUIRED - 所有锁都已获取
+ * @retval OCF_LOCK_NOT_ACQUIRED - 至少有一个锁没有获取
+ */
+int ocf_req_async_lock_rd_fast_only(struct ocf_alock *c,
+		struct ocf_request *req);
+
+/**
  * @brief Unlock OCF request from write access
  *
  * @param c - cacheline concurrency private data

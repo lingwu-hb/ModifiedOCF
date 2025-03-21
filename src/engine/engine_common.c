@@ -136,6 +136,9 @@ static void ocf_engine_update_req_info(struct ocf_cache* cache,
     uint8_t end_sector = ocf_line_end_sector(cache);
     struct ocf_map_info* entry = &(req->map[idx]);
 
+    // 一个请求存在多个缓存行（4K大小）
+    // 但是系统中真正存储的单位为 扇区（512字节）
+    // 所以需要找到第一个请求在第几个扇区
     start_sector = ocf_map_line_start_sector(req, idx);
     end_sector = ocf_map_line_end_sector(req, idx);
 
@@ -227,6 +230,7 @@ static void ocf_engine_lookup(struct ocf_request* req) {
          core_line <= req->core_line_last; core_line++, i++) {
         struct ocf_map_info* entry = &(req->map[i]);
 
+        // 确定哈希桶之后，在该桶下面的冲突链表中继续查找需要的缓存行
         ocf_engine_lookup_map_entry(cache, entry, core_id,
                                     core_line);
 
@@ -240,6 +244,7 @@ static void ocf_engine_lookup(struct ocf_request* req) {
         OCF_DEBUG_PARAM(cache, "Hit, cache line %u, core line = %llu",
                         entry->coll_idx, entry->core_line);
 
+        // update req->info 相关字段，每个缓存行都需要更新
         ocf_engine_update_req_info(cache, req, i);
     }
 
@@ -437,6 +442,24 @@ static inline void ocf_prepare_clines_miss(struct ocf_request* req) {
         ocf_promotion_req_purge(req->cache->promotion_policy, req);
 }
 
+/*
+ * 这个函数的主要功能是为请求准备缓存行,主要包括以下步骤:
+ * 1. 检查请求的分区是否可用,不可用则直接返回错误
+ * 2. 计算请求涉及的缓存行的哈希值
+ * 3. 获取哈希桶的读锁,查找缓存行的映射关系
+ * 4. 如果已经映射:
+ *    - 获取缓存行锁(根据请求类型决定读/写锁)
+ *    - 更新热度信息
+ * 5. 如果未映射:
+ *    - 检查是否需要提升到缓存
+ *    - 升级为写锁
+ *    - 重新查找映射关系(double check)
+ *    - 如果仍未映射,则分配新的缓存行并建立映射
+ *    - 获取缓存行锁
+ *    - 更新热度信息
+ * 6. 如果需要清理,则触发清理操作
+ * 7. 返回锁的状态
+ */
 int ocf_engine_prepare_clines(struct ocf_request* req) {
     struct ocf_user_part* user_part = &req->cache->user_parts[req->part_id];
     bool mapped;
@@ -450,11 +473,13 @@ int ocf_engine_prepare_clines(struct ocf_request* req) {
     }
 
     /* Calculate hashes for hash-bucket locking */
+    // 每个缓存行的 hash 值保存在 req->map[i].hash 中
     ocf_req_hash(req);
 
     /* Read-lock hash buckets associated with request target core & LBAs
      * (core lines) to assure that cache mapping for these core lines does
      * not change during traversation */
+    // 获取 hash 桶的读锁，用于读取 hash 桶的内容
     ocf_hb_req_prot_lock_rd(req);
 
     /* check CL status */
@@ -462,6 +487,7 @@ int ocf_engine_prepare_clines(struct ocf_request* req) {
 
     mapped = ocf_engine_is_mapped(req);
     if (mapped) {
+        // 获取缓存行锁，根据 req->rw 决定是写锁还是读锁
         lock = lock_clines(req);
         if (lock < 0)
             ocf_req_set_mapping_error(req);
@@ -470,6 +496,8 @@ int ocf_engine_prepare_clines(struct ocf_request* req) {
         ocf_hb_req_prot_unlock_rd(req);
         return lock;
     }
+
+    // 未命中，需要修改映射关系（分配新缓存行），需要获取写锁
 
     /* check if request should promote cachelines */
     promote = ocf_promotion_req_should_promote(
@@ -486,6 +514,11 @@ int ocf_engine_prepare_clines(struct ocf_request* req) {
     /* Repeat lookup after upgrading lock */
     ocf_engine_lookup(req);
 
+    /* unlikely() 是一个编译器优化提示宏，表示这个条件不太可能为真
+     * 这里表示在获取写锁后重新查找映射关系时，不太可能已经被映射了
+     * 因为之前在读锁时已经确认过未映射
+     * 使用 unlikely 可以让编译器优化生成的汇编代码，提高性能
+     */
     if (unlikely(ocf_engine_is_mapped(req))) {
         lock = lock_clines(req);
         ocf_engine_set_hot(req);

@@ -264,7 +264,7 @@ int ocf_read_generic(struct ocf_request* req) {
     // 判断缓存使用情况，缓存占满了才启用二次准入，否则不启用
     bool cache_full = ocf_is_cache_full(req->cache);
 
-    /* 如果历史命中率低于阈值，添加的 4K 块到历史记录并直接PT */
+    /* 如果历史命中率低于阈值，添加 4K 块到历史记录并直接PT */
     if ((float)hit_pages / total_pages < HISTORY_HIT_RATIO_THRESHOLD && cache_full) {
         OCF_DEBUG_IO("PT, History miss", req);
 
@@ -282,7 +282,7 @@ int ocf_read_generic(struct ocf_request* req) {
         return 0;
     }
 
-    /* 准备缓存行 */
+    /* 准备缓存行，尝试获取缓存读锁 */
     lock = ocf_engine_prepare_clines(req);
 
     if (!ocf_req_test_mapping_error(req)) {
