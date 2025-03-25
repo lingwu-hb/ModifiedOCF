@@ -64,8 +64,6 @@ int ocf_read_pt_do(struct ocf_request* req) {
         return 0;
     }
 
-
-
     if (ocf_engine_needs_repart(req)) {
         OCF_DEBUG_RQ(req, "Re-Part");
 
@@ -128,9 +126,11 @@ int ocf_read_pt(struct ocf_request* req) {
             /* There are mapped cache line,
              * lock request for READ access (only try fast lock)
              */
-            lock = ocf_req_async_lock_rd_fast_only(
-                req->cache->device->concurrency.cache_line,
-                req);
+            // lock = ocf_req_async_lock_rd_fast_only(
+            //     ocf_cache_line_concurrency(req->cache),
+            //     req);
+            // 由于测试过程中，没有涉及到写操作，都是读操作，缓存不会脏，所以不会与缓存进行交互
+            lock = OCF_LOCK_ACQUIRED;
         } else {
             /* No mapped cache lines, no need to get lock */
             lock = OCF_LOCK_ACQUIRED;

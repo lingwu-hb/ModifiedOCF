@@ -26,9 +26,13 @@ typedef int (*ocf_cl_lock_fast)(struct ocf_alock *alock,
 typedef int (*ocf_cl_lock_slow)(struct ocf_alock *alock,
 		struct ocf_request *req, int rw, ocf_req_async_lock_cb cmpl);
 
+typedef int (*ocf_cl_lock_check_fast)(struct ocf_alock *alock,
+		struct ocf_request *req, int rw);
+
 struct ocf_alock_lock_cbs
 {
 	ocf_cl_lock_fast lock_entries_fast;
+	ocf_cl_lock_check_fast lock_entries_check_fast;
 	ocf_cl_lock_slow lock_entries_slow;
 };
 
@@ -57,6 +61,9 @@ int ocf_alock_lock_rd(struct ocf_alock *alock,
  *         one lock wasn't acquired or error code
  */
 int ocf_alock_lock_rd_fast_only(struct ocf_alock *alock,
+		struct ocf_request *req);
+
+int ocf_alock_lock_rd_check_fast(struct ocf_alock *alock,
 		struct ocf_request *req);
 
 int ocf_alock_lock_wr(struct ocf_alock *alock,

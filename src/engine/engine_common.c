@@ -416,6 +416,24 @@ static int lock_clines(struct ocf_request* req) {
     if (req->rw == OCF_READ && ocf_engine_is_hit(req))
         lock_type = OCF_READ;
 
+    // 只要能够执行这个函数，说明缓存行一定都成功映射了（无论是 hit 还是 remapped）
+    // 此时可以快速尝试拿去写锁，拿不到的话，就直接丢弃该请求即可
+    // 现在需要考虑的是：我们要不要 setting map error 呢？
+    // 如果 set map error 了，将会走 PT 流程；如果不 set map error，会直接丢弃该 IO 请求
+
+    // 这里先简单处理，直接走 PT 流程（和丁博保持一致）
+
+    // 进行 IO 过滤
+    // 因为后续需要往缓存中进行回填，所以这里需要尝试判断是否能够拿到写锁
+    if(req->rw == OCF_READ && lock_type == OCF_WRITE) {
+        bool mapped_can_lock = ocf_req_async_lock_wr_check_fast(ocf_cache_line_concurrency(req->cache), req);
+        if(!mapped_can_lock) {
+            ocf_req_set_mapping_error(req);
+            ocf_hb_req_prot_unlock_rd(req);
+            return -OCF_ERR_NO_LOCK;
+        }
+    }
+
     return lock_type == OCF_WRITE ? ocf_req_async_lock_wr(c, req, req->engine_cbs->resume) : ocf_req_async_lock_rd(c, req, req->engine_cbs->resume);
 }
 
@@ -487,7 +505,7 @@ int ocf_engine_prepare_clines(struct ocf_request* req) {
 
     mapped = ocf_engine_is_mapped(req);
     if (mapped) {
-        // 获取缓存行锁，根据 req->rw 决定是写锁还是读锁
+        // 获取缓存行锁，根据 req->rw 和命中情况决定是拿写锁还是读锁
         lock = lock_clines(req);
         if (lock < 0)
             ocf_req_set_mapping_error(req);
@@ -498,7 +516,6 @@ int ocf_engine_prepare_clines(struct ocf_request* req) {
     }
 
     // 未命中，需要修改映射关系（分配新缓存行），需要获取写锁
-
     /* check if request should promote cachelines */
     promote = ocf_promotion_req_should_promote(
         req->cache->promotion_policy, req);
@@ -526,6 +543,8 @@ int ocf_engine_prepare_clines(struct ocf_request* req) {
         return lock;
     }
 
+    // 对于没有映射到缓存中的请求行，进行缓存行 remap
+    // remap 操作成功，表示缓存中已经预留了位置，但是数据并没有从后端加载到缓存
     ocf_prepare_clines_miss(req);
     if (!ocf_req_test_mapping_error(req)) {
         lock = lock_clines(req);

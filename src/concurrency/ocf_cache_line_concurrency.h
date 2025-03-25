@@ -96,6 +96,15 @@ int ocf_req_async_lock_rd_fast_only(struct ocf_alock *c,
 		struct ocf_request *req);
 
 /**
+ * @brief 检查请求中 已映射 的缓存行是否可以获取写锁（只进行快速尝试）
+ * @param c - 缓存行并发控制的私有数据
+ * @param req - OCF 请求
+ * @return true - 可以获取写锁，false - 不能获取写锁
+ */
+bool ocf_req_async_lock_wr_check_fast(struct ocf_alock *c,
+		struct ocf_request *req);
+
+/**`
  * @brief Unlock OCF request from write access
  *
  * @param c - cacheline concurrency private data

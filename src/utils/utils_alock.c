@@ -759,6 +759,20 @@ int ocf_alock_lock_rd_fast_only(struct ocf_alock *alock,
 	return lock;
 }
 
+int ocf_alock_lock_wr_check_fast(struct ocf_alock *alock,
+		struct ocf_request *req)
+{
+	int lock;
+
+	ENV_BUG_ON(env_atomic_read(&req->lock_remaining));
+	// 只是判断一下能否拿到锁，并不真拿锁，所以不进行 req->alock_rw 的赋值
+	// req->alock_rw = OCF_WRITE;
+
+	lock = alock->cbs->lock_entries_check_fast(alock, req, OCF_WRITE);
+
+	return lock;
+}
+
 int ocf_alock_lock_wr(struct ocf_alock *alock,
 		struct ocf_request *req, ocf_req_async_lock_cb cmpl)
 {

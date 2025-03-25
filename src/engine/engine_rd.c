@@ -285,6 +285,8 @@ int ocf_read_generic(struct ocf_request* req) {
     /* 准备缓存行，尝试获取缓存读锁 */
     lock = ocf_engine_prepare_clines(req);
 
+    // TODO：后续涉及到缓存回填操作，具体是如何进行回填的，在哪里获取的写锁呢？
+
     if (!ocf_req_test_mapping_error(req)) {
         if (lock >= 0) {
             if (lock == OCF_LOCK_ACQUIRED) {
