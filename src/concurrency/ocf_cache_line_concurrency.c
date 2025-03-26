@@ -228,11 +228,6 @@ static int ocf_cl_lock_line_check_fast(struct ocf_alock* alock,
         // 确保该缓存行尚未被锁定（开发断言）
         ENV_BUG_ON(ocf_alock_is_index_locked(alock, req, i));
 
-        // 如果缓存行未命中，则跳过
-        if(req->map[i].status != LOOKUP_HIT) {
-            continue;
-        }
-
         // 根据请求类型尝试获取不同类型的锁
         if (rw == OCF_WRITE) {
             // 尝试获取写锁（互斥锁）
@@ -271,10 +266,6 @@ static int ocf_cl_lock_line_check_fast(struct ocf_alock* alock,
 
         // 获取缓存行索引
         entry = ocf_cl_lock_line_get_entry(alock, req, i);
-
-        if(req->map[i].status != LOOKUP_HIT) {
-            continue;
-        }
 
         // 检查该缓存行是否已被锁定
         if (ocf_alock_is_index_locked(alock, req, i)) {

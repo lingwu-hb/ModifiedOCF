@@ -429,7 +429,6 @@ static int lock_clines(struct ocf_request* req) {
         bool mapped_can_lock = ocf_req_async_lock_wr_check_fast(ocf_cache_line_concurrency(req->cache), req);
         if(!mapped_can_lock) {
             ocf_req_set_mapping_error(req);
-            ocf_hb_req_prot_unlock_rd(req);
             return -OCF_ERR_NO_LOCK;
         }
     }

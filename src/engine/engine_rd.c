@@ -238,42 +238,14 @@ int ocf_read_generic(struct ocf_request* req) {
     req->io_if = &_io_if_read_generic_resume;
     req->engine_cbs = &_rd_engine_callbacks;
 
-
-    /* 使用宏定义计算页面对齐的地址和总页数 */
-    uint64_t start_addr = PAGE_ALIGN_DOWN(req->ioi.io.addr);
-    uint64_t end_addr = PAGE_ALIGN_DOWN(req->ioi.io.addr + req->ioi.io.bytes - 1);
-    uint64_t total_pages = PAGES_IN_REQ(start_addr, end_addr);
-    uint64_t hit_pages = 0;
-
-    /* 检查历史记录中的命中情况 */
-    for (uint64_t curr_addr = start_addr; curr_addr <= end_addr; curr_addr += PAGE_SIZE) {
-        if (ocf_history_hash_find(curr_addr, ocf_core_get_id(req->core))) {
-            hit_pages++;
-        }
-    }
-
     /* 每1000个请求输出一次统计信息 */
     if (env_atomic_read(&total_requests) % 1000 == 0) {
         // ocf_history_hash_print_stats();
     }
 
-    // 输出当前请求的相关信息
-    printf("\e[31m[INFO]\e[0m addr: %lx, size: %lx, start_addr: %lx, end_addr: %lx\n", req->ioi.io.addr, req->ioi.io.bytes, start_addr, end_addr);
-    printf("hit_pages: %d, total_pages: %d, hit_ratio: %f\n", hit_pages, total_pages, (float)hit_pages / total_pages);
-
-    // 判断缓存使用情况，缓存占满了才启用二次准入，否则不启用
-    bool cache_full = ocf_is_cache_full(req->cache);
-
-    /* 如果历史命中率低于阈值，添加 4K 块到历史记录并直接PT */
-    if ((float)hit_pages / total_pages < HISTORY_HIT_RATIO_THRESHOLD && cache_full) {
-        OCF_DEBUG_IO("PT, History miss", req);
-
-        // 将当前请求涉及到的所有 4K 块都尝试添加到历史记录中
-        // 因为考虑到要更新 LRU 链表，所有需要都进行尝试添加
-        // need to mantain: 理论上命中的块不需要添加，此处为了方便，没有重整代码
-        for (uint64_t curr_addr = start_addr; curr_addr <= end_addr; curr_addr += PAGE_SIZE) {
-            ocf_history_hash_add_addr(curr_addr, ocf_core_get_id(req->core));
-        }
+    /* 如果请求不允许二次准入，则直接使用PT模式 */
+    if (!req->allow_second_admission) {
+        OCF_DEBUG_IO("PT, Second admission denied", req);
 
         ocf_req_clear(req);
         req->force_pt = true;

@@ -63,7 +63,7 @@ int ocf_alock_lock_rd(struct ocf_alock *alock,
 int ocf_alock_lock_rd_fast_only(struct ocf_alock *alock,
 		struct ocf_request *req);
 
-int ocf_alock_lock_rd_check_fast(struct ocf_alock *alock,
+int ocf_alock_lock_wr_check_fast(struct ocf_alock *alock,
 		struct ocf_request *req);
 
 int ocf_alock_lock_wr(struct ocf_alock *alock,

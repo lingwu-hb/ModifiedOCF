@@ -13,6 +13,7 @@
 #include "ocf_trace_priv.h"
 #include "utils/utils_debug.h"
 #include "utils/utils_user_part.h"
+#include "utils/utils_history_hash.h"
 
 static env_atomic cnt;
 
@@ -300,6 +301,40 @@ void ocf_core_volume_submit_io(struct ocf_io* io) {
         ocf_core_seq_cutoff_update(core, req);
         ocf_req_put(req);
         return;
+    }
+
+    // 考虑将二次准入的代码移植到此处
+    // 给 req 增加一个字段，用于后续进行判断是否能够二次准入
+    // 默认允许二次准入
+    req->allow_second_admission = true;
+    
+    // 只对读请求进行二次准入检查
+    if (io->dir == OCF_READ) {
+        // 使用宏定义计算页面对齐的地址和总页数
+        uint64_t start_addr = PAGE_ALIGN_DOWN(req->ioi.io.addr);
+        uint64_t end_addr = PAGE_ALIGN_DOWN(req->ioi.io.addr + req->ioi.io.bytes - 1);
+        uint64_t total_pages = PAGES_IN_REQ(start_addr, end_addr);
+        uint64_t hit_pages = 0;
+
+        // 检查历史记录中的命中情况
+        for (uint64_t curr_addr = start_addr; curr_addr <= end_addr; curr_addr += PAGE_SIZE) {
+            if (ocf_history_hash_find(curr_addr, ocf_core_get_id(req->core))) {
+                hit_pages++;
+            }
+        }
+
+        // 判断缓存使用情况，缓存占满了才启用二次准入，否则不启用
+        bool cache_full = ocf_is_cache_full(req->cache);
+
+        // 如果历史命中率低于阈值且缓存已满，则不允许二次准入
+        if ((float)hit_pages / total_pages < HISTORY_HIT_RATIO_THRESHOLD && cache_full) {
+            req->allow_second_admission = false;
+            
+            // 将当前请求涉及到的所有 4K 块都尝试添加到历史记录中
+            for (uint64_t curr_addr = start_addr; curr_addr <= end_addr; curr_addr += PAGE_SIZE) {
+                ocf_history_hash_add_addr(curr_addr, ocf_core_get_id(req->core));
+            }
+        }
     }
 
     OCF_DEBUG_IO("Miss", req);

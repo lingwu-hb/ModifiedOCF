@@ -191,6 +191,10 @@ struct ocf_request {
     uint8_t wi_second_pass : 1;
     /*!< Set after first pass of WI write is completed */
 
+    // @hb 新增字段，用于判断是否允许进行二次准入
+    uint8_t allow_second_admission : 1;
+    /*!< Indicates if request is allowed for second admission based on history hit ratio */
+
     uint8_t part_evict : 1;
     /* !< Some cachelines from request's partition must be evicted */
 
