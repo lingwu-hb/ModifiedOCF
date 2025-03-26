@@ -367,6 +367,61 @@ void ocf_history_hash_print_stats(void) {
                       load_factor * 100, hit_ratio, collision_count);
 }
 
+/* 打印最终统计信息和推荐参数 */
+void ocf_history_hash_print_final_stats(void) {
+    // 打印哈希表统计信息
+    ocf_history_hash_print_stats();
+    
+    // 打印最佳配置建议
+    float hit_ratio = (hit_count + miss_count > 0) ? ((float)hit_count / (hit_count + miss_count)) : 0;
+    OCF_DEBUG_HISTORY("[Final Stats] Total: %llu, Hit: %llu, Miss: %llu, Ratio: %.2f%%\n",
+                      hit_count + miss_count, hit_count, miss_count, hit_ratio * 100);
+}
+
+/**
+ * @brief 执行二次准入检查
+ * 
+ * 检查请求中所有4K块在历史记录中的命中情况，并根据命中率决定是否允许缓存。
+ * 如果命中率低于阈值，则将请求的所有4K块添加到历史记录中，并返回false表示不应缓存。
+ * 
+ * @param req OCF请求对象
+ * @return bool true表示通过二次准入检查，应该被缓存；false表示未通过，应直接PT
+ */
+bool ocf_history_check_second_chance(struct ocf_request* req) {
+    if (!history_hash) {
+        ocf_history_hash_init(NULL);
+    }
+
+    /* 计算页面对齐的地址和总页数 */
+    uint64_t start_addr = PAGE_ALIGN_DOWN(req->ioi.io.addr);
+    uint64_t end_addr = PAGE_ALIGN_DOWN(req->ioi.io.addr + req->ioi.io.bytes - 1);
+    uint64_t total_pages = PAGES_IN_REQ(start_addr, end_addr);
+    uint64_t hit_pages = 0;
+    int core_id = ocf_core_get_id(req->core);
+
+    /* 检查历史记录中的命中情况 */
+    for (uint64_t curr_addr = start_addr; curr_addr <= end_addr; curr_addr += PAGE_SIZE) {
+        if (ocf_history_hash_find(curr_addr, core_id)) {
+            hit_pages++;
+        }
+    }
+    
+    /* 如果历史命中率低于阈值，添加4K块到历史记录并返回false */
+    if ((float)hit_pages / total_pages < HISTORY_HIT_RATIO_THRESHOLD) {
+        OCF_DEBUG_IO("PT, History miss", req);
+
+        // 将当前请求涉及到的所有4K块都尝试添加到历史记录中
+        // 因为考虑到要更新LRU链表，所有需要都进行尝试添加
+        for (uint64_t curr_addr = start_addr; curr_addr <= end_addr; curr_addr += PAGE_SIZE) {
+            ocf_history_hash_add_addr(curr_addr, core_id);
+        }
+
+        return false; // 未通过二次准入检查
+    }
+
+    return true; // 通过二次准入检查
+}
+
 /* 清理哈希表资源 */
 void ocf_history_hash_cleanup(void) {
     // env_spinlock_lock(&history_lock);

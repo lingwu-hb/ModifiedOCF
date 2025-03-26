@@ -97,6 +97,18 @@ void ocf_history_hash_add_addr(uint64_t addr, int core_id);
 void ocf_history_hash_add_req(struct ocf_request* req);
 
 /**
+ * @brief 执行二次准入检查（Secondary Chance）
+ * 
+ * 此函数检查请求的所有4K块在历史记录中的命中情况，并返回检查结果。
+ * 如果请求的历史命中率低于阈值，会将所有4K块添加到历史记录中，并返回false。
+ * 否则返回true表示请求通过二次准入检查。
+ *
+ * @param req OCF请求
+ * @return bool true表示通过二次准入检查，false表示未通过
+ */
+bool ocf_history_check_second_chance(struct ocf_request* req);
+
+/**
  * @brief 打印哈希表统计信息
  */
 void ocf_history_hash_print_stats(void);

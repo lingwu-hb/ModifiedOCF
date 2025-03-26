@@ -238,80 +238,9 @@ int ocf_read_generic(struct ocf_request* req) {
     req->io_if = &_io_if_read_generic_resume;
     req->engine_cbs = &_rd_engine_callbacks;
 
-    /* 使用宏定义计算页面对齐的地址和总页数 */
-    uint64_t start_addr = PAGE_ALIGN_DOWN(req->ioi.io.addr);
-    uint64_t end_addr = PAGE_ALIGN_DOWN(req->ioi.io.addr + req->ioi.io.bytes - 1);
-    uint64_t total_pages = PAGES_IN_REQ(start_addr, end_addr);
-    uint64_t hit_pages = 0;
-
-    /* 检查历史记录中的命中情况 */
-    for (uint64_t curr_addr = start_addr; curr_addr <= end_addr; curr_addr += PAGE_SIZE) {
-        if (ocf_history_hash_find(curr_addr, ocf_core_get_id(req->core))) {
-            hit_pages++;
-        }
-    }
-
-    /* 每1000个请求输出一次统计信息 */
-    if (env_atomic_read(&total_requests) % 1000 == 0) {
-        // ocf_history_hash_print_stats();
-        // 用 OCF_DEBUG_IO 输出哈希表的平均冲突链表的深度
-        if (history_hash && history_count > 0) {
-            int total_chains = 0;
-            int non_empty_buckets = 0;
-
-            // 遍历哈希表计算所有链的长度总和和非空桶数量
-            for (unsigned int i = 0; i < current_hash_size; i++) {
-                if (history_hash[i]) {
-                    int chain_length = 0;
-                    history_node_t* node = history_hash[i];
-
-                    while (node) {
-                        chain_length++;
-                        node = node->next;
-                    }
-
-                    total_chains += chain_length;
-                    non_empty_buckets++;
-                }
-            }
-
-            // 计算平均链长度
-            float avg_chain_length = non_empty_buckets > 0 ? (float)total_chains / non_empty_buckets : 0;
-
-            // 计算哈希表负载因子
-            float load_factor = (float)history_count / current_hash_size;
-
-            // 输出统计信息
-            OCF_DEBUG_LOG("Hash Stats: Size=%u, Count=%d, NonEmptyBuckets=%d, AvgChain=%.2f, Load=%.2f%%",
-                          req,
-                          current_hash_size,
-                          history_count,
-                          non_empty_buckets,
-                          avg_chain_length,
-                          load_factor * 100);
-
-            // 如果平均链长度超过阈值，可以考虑扩展哈希表
-            if (avg_chain_length > 2.0) {
-                OCF_DEBUG_LOG("Hash table collision rate is high, consider increasing hash size", req);
-            }
-        }
-    }
-
-    // 输出当前请求的相关信息
-    printf("\e[31m[INFO]\e[0m addr: %lx, size: %lx, start_addr: %lx, end_addr: %lx\n", req->ioi.io.addr, req->ioi.io.bytes, start_addr, end_addr);
-    printf("hit_pages: %d, total_pages: %d, hit_ratio: %f\n", hit_pages, total_pages, (float)hit_pages / total_pages);
-
-    /* 如果历史命中率低于阈值，添加的 4K 块到历史记录并直接PT */
-    if ((float)hit_pages / total_pages < HISTORY_HIT_RATIO_THRESHOLD) {
-        OCF_DEBUG_IO("PT, History miss", req);
-
-        // 将当前请求涉及到的所有 4K 块都尝试添加到历史记录中
-        // 因为考虑到要更新 LRU 链表，所有需要都进行尝试添加
-        // need to mantain: 理论上命中的块不需要添加，此处为了方便，没有重整代码
-        for (uint64_t curr_addr = start_addr; curr_addr <= end_addr; curr_addr += PAGE_SIZE) {
-            ocf_history_hash_add_addr(curr_addr, ocf_core_get_id(req->core));
-        }
-
+    /* 执行二次准入检查 */
+    if (!is_prefetch_req(req) && !ocf_history_check_second_chance(req)) {
+        /* 未通过二次准入检查，直接走PT路径 */
         ocf_req_clear(req);
         req->force_pt = true;
         ocf_get_io_if(ocf_cache_mode_pt)->read(req);
