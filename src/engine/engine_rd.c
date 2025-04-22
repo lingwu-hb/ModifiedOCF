@@ -250,6 +250,9 @@ int ocf_read_generic(struct ocf_request* req) {
         // ocf_history_hash_print_stats();
     }
 
+    /* 记录开始时间戳 */
+    uint64_t start_time = env_get_tick_count();
+
     /* 如果请求不允许二次准入，则直接使用PT模式 */
     if (!req->allow_second_admission) {
         OCF_DEBUG_IO("PT, Second admission denied", req);
@@ -261,13 +264,7 @@ int ocf_read_generic(struct ocf_request* req) {
         return 0;
     }
 
-    /* 准备缓存行，尝试获取缓存读锁 */
-    /* 记录开始时间戳 */
-    uint64_t start_time = env_get_tick_count();
-    
-    lock = ocf_engine_prepare_clines(req);
-    
-    /* 记录结束时间戳并计算用时 */
+    /* 记录开始时间戳 *//* 记录结束时间戳并计算用时 */
     uint64_t end_time = env_get_tick_count();
     uint64_t duration_cycles = end_time - start_time;
     uint64_t duration_ns = env_ticks_to_nsecs(duration_cycles);
@@ -281,10 +278,12 @@ int ocf_read_generic(struct ocf_request* req) {
         uint64_t avg_time = env_atomic64_read(&total_prepare_time) / 
                             env_atomic64_read(&count_prepare_calls);
         
-        ocf_cache_log(req->cache, log_info, 
-            "OCF_TIMING: ocf_engine_prepare_clines - avg time: %llu ns, calls: %llu\n",
+        printf("OCF_TIMING: - avg time: %llu ns, calls: %llu\n",
             avg_time, env_atomic64_read(&count_prepare_calls));
     }
+
+    /* 准备缓存行，尝试获取缓存读锁 */
+    lock = ocf_engine_prepare_clines(req);
 
     if (!ocf_req_test_mapping_error(req)) {
         if (lock >= 0) {
