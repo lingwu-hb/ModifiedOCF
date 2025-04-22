@@ -57,9 +57,9 @@ $(INC_RM): validate
 #
 # Installing sources
 #
-SRC_IN=$(shell find $(PWD)/src -name '*.[c|h]' -type f)
+SRC_IN=$(shell find $(PWD)/src -name '*.[c|h|cpp]' -type f)
 SRC_OUT=$(patsubst $(PWD)/src/%,$(OUTDIR)/src/ocf/%,$(SRC_IN))
-SRC_RM=$(shell find $(OUTDIR)/src/ocf -name '*.[c|h]' -xtype l 2>/dev/null)
+SRC_RM=$(shell find $(OUTDIR)/src/ocf -name '*.[c|h|cpp]' -xtype l 2>/dev/null)
 
 src: $(SRC_OUT) $(SRC_RM)
 	@$(MAKE) distcleandir
@@ -79,9 +79,9 @@ $(SRC_RM): validate
 #
 # Installing environment
 #
-OCF_ENV_IN=$(shell find $(OCF_ENV_DIR) -name '*.[c|h]' -type f)
+OCF_ENV_IN=$(shell find $(OCF_ENV_DIR) -name '*.[c|h|cpp]' -type f)
 OCF_ENV_OUT=$(patsubst $(OCF_ENV_DIR)%,$(OUTDIR)/src/ocf/env/%,$(OCF_ENV_IN))
-OCF_ENV_RM=$(shell find $(OUTDIR)/src/ocf/env -name '*.[c|h]' -xtype l 2>/dev/null)
+OCF_ENV_RM=$(shell find $(OUTDIR)/src/ocf/env -name '*.[c|h|cpp]' -xtype l 2>/dev/null)
 
 env: | env_check env_dep
 	@$(MAKE) distcleandir

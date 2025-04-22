@@ -15,6 +15,7 @@
 #include "../utils/utils_history_hash.h"
 #include "../utils/utils_io.h"
 #include "../utils/utils_user_part.h"
+#include "test.h"
 #include "cache_engine.h"
 #include "engine_bf.h"
 #include "engine_common.h"
@@ -27,6 +28,10 @@
 
 static env_atomic total_requests;
 static env_atomic cache_write_requests;
+
+/* 定义用于记录累计时间的全局变量 */
+static env_atomic64_t total_prepare_time = 0;  /* 累计时间 */
+static env_atomic64_t count_prepare_calls = 0; /* 调用次数 */
 
 static void _ocf_read_generic_hit_complete(struct ocf_request* req, int error) {
     struct ocf_alock* c = ocf_cache_line_concurrency(
@@ -218,6 +223,8 @@ static const struct ocf_engine_callbacks _rd_engine_callbacks =
 };
 
 int ocf_read_generic(struct ocf_request* req) {
+    print_test();
+
     int lock = OCF_LOCK_NOT_ACQUIRED;
     struct ocf_cache* cache = req->cache;
     env_atomic_inc(&total_requests);
@@ -255,9 +262,29 @@ int ocf_read_generic(struct ocf_request* req) {
     }
 
     /* 准备缓存行，尝试获取缓存读锁 */
+    /* 记录开始时间戳 */
+    uint64_t start_time = env_get_tick_count();
+    
     lock = ocf_engine_prepare_clines(req);
-
-    // TODO：后续涉及到缓存回填操作，具体是如何进行回填的，在哪里获取的写锁呢？
+    
+    /* 记录结束时间戳并计算用时 */
+    uint64_t end_time = env_get_tick_count();
+    uint64_t duration_cycles = end_time - start_time;
+    uint64_t duration_ns = env_ticks_to_nsecs(duration_cycles);
+    
+    /* 更新累计时间和调用次数 */
+    env_atomic64_add(duration_ns, &total_prepare_time);
+    env_atomic64_inc(&count_prepare_calls);
+    
+    /* 每1000次调用打印一次平均时间 */
+    if (env_atomic64_read(&count_prepare_calls) % 1000 == 0) {
+        uint64_t avg_time = env_atomic64_read(&total_prepare_time) / 
+                            env_atomic64_read(&count_prepare_calls);
+        
+        ocf_cache_log(req->cache, log_info, 
+            "OCF_TIMING: ocf_engine_prepare_clines - avg time: %llu ns, calls: %llu\n",
+            avg_time, env_atomic64_read(&count_prepare_calls));
+    }
 
     if (!ocf_req_test_mapping_error(req)) {
         if (lock >= 0) {
