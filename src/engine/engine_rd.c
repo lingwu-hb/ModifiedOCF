@@ -5,6 +5,9 @@
 
 #include "engine_rd.h"
 #include <signal.h>
+#include <time.h>    /* 标准库时间函数 */
+#include <stdio.h>   /* printf */
+#include <stdlib.h>  /* malloc, free */
 #include "../concurrency/ocf_concurrency.h"
 #include "../metadata/metadata.h"
 #include "../ocf_cache_priv.h"
@@ -30,8 +33,9 @@ static env_atomic total_requests;
 static env_atomic cache_write_requests;
 
 /* 定义用于记录累计时间的全局变量 */
-static env_atomic64_t total_prepare_time = 0;  /* 累计时间 */
-static env_atomic64_t count_prepare_calls = 0; /* 调用次数 */
+static unsigned long long total_time_ns = 0;  /* 累计时间（纳秒） */
+static unsigned long long call_count = 0;     /* 调用次数 */
+static env_atomic call_count_atomic;          /* 原子调用计数 */
 
 static void _ocf_read_generic_hit_complete(struct ocf_request* req, int error) {
     struct ocf_alock* c = ocf_cache_line_concurrency(
@@ -250,9 +254,6 @@ int ocf_read_generic(struct ocf_request* req) {
         // ocf_history_hash_print_stats();
     }
 
-    /* 记录开始时间戳 */
-    uint64_t start_time = env_get_tick_count();
-
     /* 如果请求不允许二次准入，则直接使用PT模式 */
     if (!req->allow_second_admission) {
         OCF_DEBUG_IO("PT, Second admission denied", req);
@@ -264,26 +265,32 @@ int ocf_read_generic(struct ocf_request* req) {
         return 0;
     }
 
-    /* 记录开始时间戳 *//* 记录结束时间戳并计算用时 */
-    uint64_t end_time = env_get_tick_count();
-    uint64_t duration_cycles = end_time - start_time;
-    uint64_t duration_ns = env_ticks_to_nsecs(duration_cycles);
+    /* 记录开始时间戳 */
+    struct timespec start_time, end_time;
+    clock_gettime(CLOCK_MONOTONIC, &start_time);
     
-    /* 更新累计时间和调用次数 */
-    env_atomic64_add(duration_ns, &total_prepare_time);
-    env_atomic64_inc(&count_prepare_calls);
-    
-    /* 每1000次调用打印一次平均时间 */
-    if (env_atomic64_read(&count_prepare_calls) % 1000 == 0) {
-        uint64_t avg_time = env_atomic64_read(&total_prepare_time) / 
-                            env_atomic64_read(&count_prepare_calls);
-        
-        printf("OCF_TIMING: - avg time: %llu ns, calls: %llu\n",
-            avg_time, env_atomic64_read(&count_prepare_calls));
-    }
-
     /* 准备缓存行，尝试获取缓存读锁 */
     lock = ocf_engine_prepare_clines(req);
+    
+    /* 记录结束时间戳并计算用时 */
+    clock_gettime(CLOCK_MONOTONIC, &end_time);
+    
+    /* 计算执行时间（纳秒） */
+    unsigned long long duration_ns = 
+        (end_time.tv_sec - start_time.tv_sec) * 1000000000ULL + 
+        (end_time.tv_nsec - start_time.tv_nsec);
+    
+    /* 更新统计数据 - 加锁以确保原子性 */
+    env_atomic_inc(&call_count_atomic);
+    call_count++;
+    total_time_ns += duration_ns;
+    
+    /* 每1000次调用打印一次平均时间 */
+    if (call_count % 1000 == 0) {
+        unsigned long long avg_time = total_time_ns / call_count;
+        printf("OCF_TIMING: ocf_engine_prepare_clines - avg time: %llu ns, calls: %llu\n",
+            avg_time, call_count);
+    }
 
     if (!ocf_req_test_mapping_error(req)) {
         if (lock >= 0) {
