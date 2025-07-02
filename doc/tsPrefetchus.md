@@ -155,6 +155,7 @@ static void tsPrefetchus_handle_find(cache_t *cache, const request_t *req, bool 
     ts_update_lr(cache); // 需要 cache->prefetcher->params，所以入参为 cache
   }
 }
+```
 1. tsPrefetchus_params->num_hit
 2. cache_obj->trigger_block
 3. cache_obj->prefetch_flag
@@ -162,6 +163,7 @@ static void tsPrefetchus_handle_find(cache_t *cache, const request_t *req, bool 
 5. tsPrefetchus_params->lr_update_interval
 
 ### tsPrefetchus_handle_evict
+```c
 void tsPrefetchus_handle_evict(cache_t *cache, const request_t *check_req) {
   if (check_req->trigger_block) {
     if (check_req->prefetch_flag == 1) {
