@@ -1,0 +1,19 @@
+Feature Importance Analysis
+=========================
+
+Trace: web_3
+  Feature 0: 0.0000
+  Feature 1: 0.0000
+  Feature 2: 0.0000
+  Feature 3: 0.0000
+  Feature 4: 0.0000
+  Feature 5: 1.0000
+
+
+Average Feature Importance Across All Traces:
+  Feature 0: 0.0000
+  Feature 1: 0.0000
+  Feature 2: 0.0000
+  Feature 3: 0.0000
+  Feature 4: 0.0000
+  Feature 5: 1.0000
