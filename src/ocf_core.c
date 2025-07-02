@@ -14,6 +14,7 @@
 #include "utils/utils_debug.h"
 #include "utils/utils_user_part.h"
 #include "utils/utils_history_hash.h"
+#include "prefetch/tsPrefetchus.h"
 
 static env_atomic cnt;
 
@@ -269,6 +270,14 @@ void ocf_core_volume_submit_io(struct ocf_io* io) {
     req = ocf_io_to_req(io);
     core = ocf_volume_to_core(ocf_io_get_volume(io));
     cache = ocf_core_get_cache(core);
+
+    // TODO：修改 cache 结构，并在初始化 cache 时初始化内部的 prefetcher
+    // 执行 prefetcher
+    if(io->dir == OCF_READ) {
+        // 类似于 das_analyse，只是这里采用同步的方式将推荐的预取请求塞入队列
+        // TODO：ocf_request 结构中需要增加 prefetch_flag 字段和 trigger_block 字段
+        tsPrefetchus_prefetch(cache, req);
+    }
 
     ocf_trace_init_io(req);
 

@@ -124,6 +124,11 @@ int ocf_read_fast(struct ocf_request* req) {
 
     part_has_space = ocf_user_part_has_space(req);
 
+    // 该请求命中缓存，更新预取器相关参数
+    if(hit && part_has_space) {
+        tsPrefetchus_handle_find(req->cache, req);
+    }
+
     if (hit && part_has_space) {
         ocf_io_start(&req->ioi.io);
         lock = ocf_req_async_lock_rd(

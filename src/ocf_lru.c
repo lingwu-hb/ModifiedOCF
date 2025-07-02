@@ -689,6 +689,8 @@ static void ocf_lru_invalidate(ocf_cache_t cache, ocf_cache_line_t cline,
 uint32_t ocf_lru_req_clines(struct ocf_request *req,
 		struct ocf_part *src_part, uint32_t cline_no)
 {
+	// TODO：最终都会在这里进行驱逐，找到被驱逐的对象，然后对 prefetcher 进行更新
+	
 	struct ocf_alock* alock;
 	struct ocf_lru_iter iter;
 	uint32_t i;
