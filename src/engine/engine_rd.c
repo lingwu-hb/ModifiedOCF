@@ -265,6 +265,8 @@ int ocf_read_generic(struct ocf_request* req) {
         return 0;
     }
 
+    // TODO：收集请求的信息，保存到内存中，收集到了 1 万个请求之后触发决策树重训练机制
+
     /* 记录开始时间戳 */
     struct timespec start_time, end_time;
     clock_gettime(CLOCK_MONOTONIC, &start_time);
