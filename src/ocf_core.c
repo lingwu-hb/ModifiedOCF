@@ -15,6 +15,69 @@
 #include "utils/utils_user_part.h"
 #include "utils/utils_history_hash.h"
 #include "prefetch/tsPrefetchus.h"
+// 包含必要的头文件
+#include "vbdev_ocf.h"
+#include "stats.h"
+
+
+// 添加全局变量，存储上一次的缓存命中率
+static double previous_hit_ratio = -1.0; // -1表示首次运行，尚未收集数据
+
+// 计算缓存命中率的函数
+static double calculate_hit_ratio(struct ocf_stats_requests *reqs)
+{
+    // 获取总请求数和命中请求数
+    uint64_t total_requests = reqs->rd_total.value + reqs->wr_total.value;
+    uint64_t hit_requests = reqs->rd_hits.value + reqs->wr_hits.value;
+    
+    if (total_requests == 0) {
+        return 0.0;
+    }
+    
+    return (double)hit_requests / total_requests;
+}
+
+// 检查缓存命中率变化并决定是否重训练模型
+static void check_hit_ratio_and_retrain(ocf_cache_t cache, const char *core_name)
+{
+    struct ocf_stats_requests reqs = {0};
+    int status;
+    ocf_core_t core;
+    
+    // 根据名称获取核心设备
+    status = ocf_core_get_by_name(cache, core_name, strlen(core_name), &core);
+    if (status) {
+        ocf_log(cache, log_err, "Failed to get core by name %s: %d\n", core_name, status);
+        return;
+    }
+    
+    // 获取统计信息
+    status = ocf_stats_collect_core(core, NULL, &reqs, NULL, NULL);
+    if (status) {
+        ocf_log(cache, log_err, "Failed to collect stats for core %s: %d\n", core_name, status);
+        return;
+    }
+    
+    // 计算当前缓存命中率
+    double current_hit_ratio = calculate_hit_ratio(&reqs);
+    
+    // 如果不是首次收集数据，则比较两个周期的命中率变化
+    if (previous_hit_ratio >= 0) {
+        double ratio_change = fabs(current_hit_ratio - previous_hit_ratio);
+        
+        ocf_log(cache, log_info, "OCF hit ratio: previous=%lf, current=%lf, change=%lf\n", 
+                previous_hit_ratio, current_hit_ratio, ratio_change);
+        
+        // 如果命中率变化超过10%，触发模型重训练
+        if (ratio_change > 0.1) {
+            ocf_log(cache, log_info, "Hit ratio change (%lf) exceeded threshold, triggering model retraining\n", ratio_change);
+            ReTrainClassifier();
+        }
+    }
+    
+    // 保存当前命中率，用于下一次比较
+    previous_hit_ratio = current_hit_ratio;
+}
 
 static env_atomic cnt;
 
@@ -278,6 +341,14 @@ void ocf_core_volume_submit_io(struct ocf_io* io) {
         // TODO：ocf_request 结构中需要增加 prefetch_flag 字段和 trigger_block 字段
         tsPrefetchus_prefetch(cache, req);
     }
+
+    // save history IO
+    // TODO：io 需要转换为 das 的 params 格式
+    SaveHisIO(req);
+
+    // TODO：判断是否触发决策树重训练机制
+    // 条件：相邻两个周期的缓存命中率变化绝对值大于 10%
+    check_hit_ratio_and_retrain(cache, core->conf_meta->name);
 
     ocf_trace_init_io(req);
 
